@@ -11,7 +11,7 @@ export function useSubscription() {
   const subscriptionStatus = profile?.subscription_status || 'trial';
   const subscriptionExpiry = profile?.subscription_expiry ? new Date(profile.subscription_expiry) : null;
   const daysUntilExpiry = subscriptionExpiry ? getDaysUntilExpiry(subscriptionExpiry) : null;
-  
+
   const isExpired = subscriptionStatus === 'expired' || (daysUntilExpiry !== null && daysUntilExpiry < 0);
   const isExpiringSoon = daysUntilExpiry !== null && daysUntilExpiry <= 7 && daysUntilExpiry >= 0;
   const paymentLink = profile?.payment_link || null;
@@ -67,7 +67,7 @@ export function useSubscription() {
         .from('promo_codes')
         .update({
           is_used: true,
-          used_by: profile?.id,
+          used_by: profile?.user_id,
           used_at: new Date().toISOString(),
         })
         .eq('id', promoCode.id);
