@@ -10,7 +10,9 @@ import { ScrollArea } from '@/components/ui/scroll-area';
 import { useNotifications } from '@/hooks/useNotifications';
 import { formatDate } from '@/lib/format';
 import { cn } from '@/lib/utils';
-
+import { useBroadcasts } from '@/hooks/useBroadcasts';
+import { useSubscription } from '@/hooks/useSubscription';
+import { useState, useEffect } from 'react';
 const typeIcons: Record<string, React.ComponentType<{ className?: string }>> = {
   salary_due: CreditCard,
   low_stock: Package,
@@ -27,16 +29,34 @@ const typeColors: Record<string, string> = {
   member: 'text-green-500',
 };
 
-import { useBroadcasts } from '@/hooks/useBroadcasts';
-import { useSubscription } from '@/hooks/useSubscription';
-
 export function NotificationCenter() {
   const { notifications, unreadCount, markAsRead, markAllAsRead, deleteNotification } = useNotifications();
   const { latestBroadcast } = useBroadcasts();
   const { daysUntilExpiry, subscriptionStatus } = useSubscription();
 
+  const [dismissedBroadcastId, setDismissedBroadcastId] = useState<string | null>(null);
+
+  useEffect(() => {
+    const savedId = localStorage.getItem('dismissedBroadcastId');
+    if (savedId) {
+      setDismissedBroadcastId(savedId);
+    }
+  }, []);
+
+  const handleDismissBroadcast = () => {
+    if (latestBroadcast) {
+      localStorage.setItem('dismissedBroadcastId', latestBroadcast.id);
+      setDismissedBroadcastId(latestBroadcast.id);
+    }
+  };
+
+  const handleMarkAllRead = () => {
+    markAllAsRead.mutate();
+    handleDismissBroadcast();
+  };
+
   const isRenewalDue = daysUntilExpiry !== null && daysUntilExpiry <= 7;
-  const showBroadcast = !!latestBroadcast;
+  const showBroadcast = !!latestBroadcast && latestBroadcast.id !== dismissedBroadcastId;
 
   const totalAlerts = (isRenewalDue ? 1 : 0) + (showBroadcast ? 1 : 0);
   const totalUnread = unreadCount + totalAlerts;
@@ -59,12 +79,12 @@ export function NotificationCenter() {
       <PopoverContent className="w-80 p-0" align="end">
         <div className="flex items-center justify-between p-4 border-b border-border">
           <h3 className="font-semibold">Notifications</h3>
-          {unreadCount > 0 && (
+          {totalUnread > 0 && (
             <Button
               variant="ghost"
               size="sm"
               className="text-xs"
-              onClick={() => markAllAsRead.mutate()}
+              onClick={handleMarkAllRead}
             >
               <Check className="h-3 w-3 mr-1" />
               Mark all read
@@ -93,7 +113,10 @@ export function NotificationCenter() {
                 )}
 
                 {showBroadcast && latestBroadcast && (
-                  <div className="p-3 bg-primary/5 hover:bg-primary/10 transition-colors cursor-pointer border-l-4 border-primary">
+                  <div
+                    className="p-3 bg-primary/5 hover:bg-primary/10 transition-colors cursor-pointer border-l-4 border-primary"
+                    onClick={handleDismissBroadcast}
+                  >
                     <div className="flex gap-3">
                       <div className="mt-0.5 text-primary">
                         <Megaphone className="h-4 w-4" />

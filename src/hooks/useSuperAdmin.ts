@@ -377,7 +377,7 @@ export function useSuperAdmin() {
 
   // Create promo code
   const createPromoCode = useMutation({
-    mutationFn: async ({ code, daysToAdd }: { code: string; daysToAdd: number }) => {
+    mutationFn: async ({ code, daysToAdd, assignToProfileIds }: { code: string; daysToAdd: number, assignToProfileIds?: string[] }) => {
       const { data, error } = await supabase
         .from('promo_codes')
         .insert({ code: code.toUpperCase(), days_to_add: daysToAdd })
@@ -385,10 +385,23 @@ export function useSuperAdmin() {
         .single();
 
       if (error) throw error;
+
+      if (assignToProfileIds && assignToProfileIds.length > 0) {
+        const assignments = assignToProfileIds.map(profileId => ({
+          promo_code_id: data.id,
+          profile_id: profileId,
+        }));
+        const { error: assignError } = await supabase
+          .from('promo_code_assignments')
+          .insert(assignments);
+        if (assignError) throw assignError;
+      }
+
       return data;
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['promo-codes'] });
+      queryClient.invalidateQueries({ queryKey: ['promo-assignments'] });
       toast.success('Promo code created!');
     },
     onError: (error) => {

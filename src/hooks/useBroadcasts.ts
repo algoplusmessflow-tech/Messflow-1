@@ -24,7 +24,7 @@ export function useBroadcasts() {
         .order('created_at', { ascending: false })
         .limit(1)
         .maybeSingle();
-      
+
       if (error) throw error;
       return data as Broadcast | null;
     },
@@ -39,7 +39,7 @@ export function useBroadcasts() {
         .from('broadcasts')
         .select('*')
         .order('created_at', { ascending: false });
-      
+
       if (error) throw error;
       return data as Broadcast[];
     },
@@ -68,9 +68,30 @@ export function useBroadcasts() {
     },
   });
 
+  // Delete broadcast (super admin only)
+  const deleteBroadcast = useMutation({
+    mutationFn: async (id: string) => {
+      const { error } = await supabase
+        .from('broadcasts')
+        .delete()
+        .eq('id', id);
+
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['all-broadcasts'] });
+      queryClient.invalidateQueries({ queryKey: ['latest-broadcast'] });
+      toast.success('Broadcast deleted!');
+    },
+    onError: (error) => {
+      toast.error('Failed to delete broadcast: ' + error.message);
+    },
+  });
+
   return {
     latestBroadcast,
     allBroadcasts,
     createBroadcast,
+    deleteBroadcast,
   };
 }

@@ -92,12 +92,12 @@ export default function SuperAdmin() {
     });
   };
 
-  const { createBroadcast, allBroadcasts } = useBroadcasts();
+  const { createBroadcast, allBroadcasts, deleteBroadcast } = useBroadcasts();
 
   const [editingPaymentLink, setEditingPaymentLink] = useState<string | null>(null);
   const [newPaymentLink, setNewPaymentLink] = useState('');
   const [isPromoOpen, setIsPromoOpen] = useState(false);
-  const [promoForm, setPromoForm] = useState({ code: '', days: '30' });
+  const [promoForm, setPromoForm] = useState<{ code: string, days: string, assignToProfileIds: string[] }>({ code: '', days: '30', assignToProfileIds: [] });
   const [isBroadcastOpen, setIsBroadcastOpen] = useState(false);
   const [broadcastForm, setBroadcastForm] = useState({ title: '', message: '' });
   const [isAddAdminOpen, setIsAddAdminOpen] = useState(false);
@@ -291,8 +291,9 @@ export default function SuperAdmin() {
     await createPromoCode.mutateAsync({
       code: promoForm.code,
       daysToAdd: Number(promoForm.days),
+      assignToProfileIds: promoForm.assignToProfileIds,
     });
-    setPromoForm({ code: '', days: '30' });
+    setPromoForm({ code: '', days: '30', assignToProfileIds: [] });
     setIsPromoOpen(false);
   };
 
@@ -624,7 +625,7 @@ export default function SuperAdmin() {
         )}
 
         <Tabs defaultValue="tenants" className="w-full">
-          <TabsList className="flex flex-wrap">
+          <TabsList className="flex flex-wrap h-auto w-full justify-start overflow-x-auto gap-1 pb-1">
             <TabsTrigger value="analytics">
               <BarChart3 className="h-4 w-4 mr-2" />
               Analytics
@@ -1123,6 +1124,58 @@ export default function SuperAdmin() {
                         className="border-border focus:border-border focus:ring-border"
                       />
                     </div>
+                    <div className="space-y-2">
+                      <Label className="text-muted-foreground font-medium">Assign To (Optional)</Label>
+                      <div className="max-h-[150px] overflow-y-auto space-y-2 border border-border rounded-md p-2 bg-background/50">
+                        {tenantProfiles.length === 0 ? (
+                          <p className="text-center text-xs text-muted-foreground py-2">No tenants found</p>
+                        ) : (
+                          tenantProfiles.map((profile) => (
+                            <div
+                              key={profile.id}
+                              className={`flex items-center justify-between p-2 rounded-md cursor-pointer transition-colors ${promoForm.assignToProfileIds.includes(profile.id)
+                                ? 'bg-primary/10 border border-primary/30'
+                                : 'hover:bg-background/50'
+                                }`}
+                              onClick={() => {
+                                setPromoForm(prev => ({
+                                  ...prev,
+                                  assignToProfileIds: prev.assignToProfileIds.includes(profile.id)
+                                    ? prev.assignToProfileIds.filter(id => id !== profile.id)
+                                    : [...prev.assignToProfileIds, profile.id]
+                                }));
+                              }}
+                            >
+                              <div>
+                                <p className="font-medium text-sm text-foreground">{profile.business_name}</p>
+                                <p className="text-xs text-muted-foreground">{profile.owner_email}</p>
+                              </div>
+                              {promoForm.assignToProfileIds.includes(profile.id) && (
+                                <CheckCircle className="h-4 w-4 text-primary" />
+                              )}
+                            </div>
+                          ))
+                        )}
+                      </div>
+                      <div className="flex items-center justify-between text-xs text-muted-foreground">
+                        <span>
+                          {promoForm.assignToProfileIds.length === 0
+                            ? 'Public (all users can use)'
+                            : `${promoForm.assignToProfileIds.length} user(s) selected`}
+                        </span>
+                        {promoForm.assignToProfileIds.length > 0 && (
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="sm"
+                            className="h-6 text-xs px-2"
+                            onClick={() => setPromoForm(prev => ({ ...prev, assignToProfileIds: [] }))}
+                          >
+                            Clear
+                          </Button>
+                        )}
+                      </div>
+                    </div>
                     <Button type="submit" className="w-full bg-gradient-to-r from-purple-500 to-pink-500 hover:from-purple-600 hover:to-pink-600 text-white font-semibold" disabled={createPromoCode.isPending}>
                       {createPromoCode.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
                       Create Code
@@ -1141,79 +1194,81 @@ export default function SuperAdmin() {
                 ) : promoCodes.length === 0 ? (
                   <p className="text-center text-muted-foreground py-8">No promo codes created yet.</p>
                 ) : (
-                  <Table>
-                    <TableHeader>
-                      <TableRow>
-                        <TableHead className="font-semibold text-muted-foreground">Code</TableHead>
-                        <TableHead className="font-semibold text-muted-foreground">Days</TableHead>
-                        <TableHead className="font-semibold text-muted-foreground">Assigned To</TableHead>
-                        <TableHead className="font-semibold text-muted-foreground">Status</TableHead>
-                        <TableHead className="font-semibold text-muted-foreground">Created</TableHead>
-                        <TableHead className="text-right font-semibold text-muted-foreground">Actions</TableHead>
-                      </TableRow>
-                    </TableHeader>
-                    <TableBody>
-                      {promoCodes.map((promo) => {
-                        const assignmentCount = getPromoAssignmentCount(promo.id);
-                        const assignments = promoAssignments.filter(a => a.promo_code_id === promo.id);
-                        return (
-                          <TableRow key={promo.id} className="hover:bg-background/50 transition-colors">
-                            <TableCell className="font-mono font-bold text-foreground">{promo.code}</TableCell>
-                            <TableCell className="text-muted-foreground">+{promo.days_to_add} days</TableCell>
-                            <TableCell>
-                              {assignmentCount === 0 ? (
-                                <Badge variant="outline" className="text-muted-foreground border-border bg-background/50">
-                                  Public (All Users)
+                  <div className="overflow-x-auto">
+                    <Table>
+                      <TableHeader>
+                        <TableRow>
+                          <TableHead className="font-semibold text-muted-foreground">Code</TableHead>
+                          <TableHead className="font-semibold text-muted-foreground">Days</TableHead>
+                          <TableHead className="font-semibold text-muted-foreground">Assigned To</TableHead>
+                          <TableHead className="font-semibold text-muted-foreground">Status</TableHead>
+                          <TableHead className="font-semibold text-muted-foreground">Created</TableHead>
+                          <TableHead className="text-right font-semibold text-muted-foreground">Actions</TableHead>
+                        </TableRow>
+                      </TableHeader>
+                      <TableBody>
+                        {promoCodes.map((promo) => {
+                          const assignmentCount = getPromoAssignmentCount(promo.id);
+                          const assignments = promoAssignments.filter(a => a.promo_code_id === promo.id);
+                          return (
+                            <TableRow key={promo.id} className="hover:bg-background/50 transition-colors">
+                              <TableCell className="font-mono font-bold text-foreground">{promo.code}</TableCell>
+                              <TableCell className="text-muted-foreground">+{promo.days_to_add} days</TableCell>
+                              <TableCell>
+                                {assignmentCount === 0 ? (
+                                  <Badge variant="outline" className="text-muted-foreground border-border bg-background/50">
+                                    Public (All Users)
+                                  </Badge>
+                                ) : (
+                                  <div className="flex flex-wrap gap-1">
+                                    {assignments.slice(0, 2).map((a) => (
+                                      <Badge key={a.id} variant="secondary" className="text-xs bg-background/50 text-foreground border-border">
+                                        {a.profile?.business_name || 'Unknown'}
+                                      </Badge>
+                                    ))}
+                                    {assignmentCount > 2 && (
+                                      <Badge variant="secondary" className="text-xs bg-background/50 text-foreground border-border">
+                                        +{assignmentCount - 2} more
+                                      </Badge>
+                                    )}
+                                  </div>
+                                )}
+                              </TableCell>
+                              <TableCell>
+                                <Badge variant={promo.is_used ? 'secondary' : 'default'} className={`${promo.is_used ? 'bg-background/50 text-foreground border-border' : 'bg-green-100 text-green-800 border-green-200'} font-medium`}>
+                                  {promo.is_used ? 'Used' : 'Active'}
                                 </Badge>
-                              ) : (
-                                <div className="flex flex-wrap gap-1">
-                                  {assignments.slice(0, 2).map((a) => (
-                                    <Badge key={a.id} variant="secondary" className="text-xs bg-background/50 text-foreground border-border">
-                                      {a.profile?.business_name || 'Unknown'}
-                                    </Badge>
-                                  ))}
-                                  {assignmentCount > 2 && (
-                                    <Badge variant="secondary" className="text-xs bg-background/50 text-foreground border-border">
-                                      +{assignmentCount - 2} more
-                                    </Badge>
-                                  )}
+                              </TableCell>
+                              <TableCell className="text-muted-foreground">{formatDate(new Date(promo.created_at))}</TableCell>
+                              <TableCell className="text-right">
+                                <div className="flex items-center justify-end gap-1">
+                                  <Button
+                                    size="icon"
+                                    variant="ghost"
+                                    onClick={() => handleOpenAssignDialog(promo.id)}
+                                    disabled={promo.is_used}
+                                    title="Assign to users"
+                                    className="hover:bg-background/50"
+                                  >
+                                    <UserCheck className="h-4 w-4 text-muted-foreground" />
+                                  </Button>
+                                  <Button
+                                    size="icon"
+                                    variant="ghost"
+                                    onClick={() => setDeletePromoId(promo.id)}
+                                    disabled={deletePromoCode.isPending}
+                                    className="hover:bg-destructive/10"
+                                  >
+                                    <Trash2 className="h-4 w-4 text-destructive" />
+                                  </Button>
                                 </div>
-                              )}
-                            </TableCell>
-                            <TableCell>
-                              <Badge variant={promo.is_used ? 'secondary' : 'default'} className={`${promo.is_used ? 'bg-background/50 text-foreground border-border' : 'bg-green-100 text-green-800 border-green-200'} font-medium`}>
-                                {promo.is_used ? 'Used' : 'Active'}
-                              </Badge>
-                            </TableCell>
-                            <TableCell className="text-muted-foreground">{formatDate(new Date(promo.created_at))}</TableCell>
-                            <TableCell className="text-right">
-                              <div className="flex items-center justify-end gap-1">
-                                <Button
-                                  size="icon"
-                                  variant="ghost"
-                                  onClick={() => handleOpenAssignDialog(promo.id)}
-                                  disabled={promo.is_used}
-                                  title="Assign to users"
-                                  className="hover:bg-background/50"
-                                >
-                                  <UserCheck className="h-4 w-4 text-muted-foreground" />
-                                </Button>
-                                <Button
-                                  size="icon"
-                                  variant="ghost"
-                                  onClick={() => setDeletePromoId(promo.id)}
-                                  disabled={deletePromoCode.isPending}
-                                  className="hover:bg-destructive/10"
-                                >
-                                  <Trash2 className="h-4 w-4 text-destructive" />
-                                </Button>
-                              </div>
-                            </TableCell>
-                          </TableRow>
-                        );
-                      })}
-                    </TableBody>
-                  </Table>
+                              </TableCell>
+                            </TableRow>
+                          );
+                        })}
+                      </TableBody>
+                    </Table>
+                  </div>
                 )}
               </CardContent>
             </Card>
@@ -1335,26 +1390,44 @@ export default function SuperAdmin() {
                 {allBroadcasts.length === 0 ? (
                   <p className="text-center text-muted-foreground py-8">No broadcasts sent yet.</p>
                 ) : (
-                  <Table>
-                    <TableHeader>
-                      <TableRow>
-                        <TableHead className="font-semibold text-muted-foreground">Title</TableHead>
-                        <TableHead className="font-semibold text-muted-foreground">Message</TableHead>
-                        <TableHead className="font-semibold text-muted-foreground">Sent On</TableHead>
-                      </TableRow>
-                    </TableHeader>
-                    <TableBody>
-                      {allBroadcasts.map((broadcast) => (
-                        <TableRow key={broadcast.id} className="hover:bg-background/50 transition-colors">
-                          <TableCell className="font-medium text-foreground">{broadcast.title}</TableCell>
-                          <TableCell className="text-muted-foreground max-w-md truncate">
-                            {broadcast.message}
-                          </TableCell>
-                          <TableCell className="text-muted-foreground">{formatDate(new Date(broadcast.created_at))}</TableCell>
+                  <div className="overflow-x-auto">
+                    <Table>
+                      <TableHeader>
+                        <TableRow>
+                          <TableHead className="font-semibold text-muted-foreground">Title</TableHead>
+                          <TableHead className="font-semibold text-muted-foreground">Message</TableHead>
+                          <TableHead className="font-semibold text-muted-foreground">Sent On</TableHead>
+                          <TableHead className="font-semibold text-muted-foreground text-right">Actions</TableHead>
                         </TableRow>
-                      ))}
-                    </TableBody>
-                  </Table>
+                      </TableHeader>
+                      <TableBody>
+                        {allBroadcasts.map((broadcast) => (
+                          <TableRow key={broadcast.id} className="hover:bg-background/50 transition-colors">
+                            <TableCell className="font-medium text-foreground">{broadcast.title}</TableCell>
+                            <TableCell className="text-muted-foreground max-w-md truncate">
+                              {broadcast.message}
+                            </TableCell>
+                            <TableCell className="text-muted-foreground">{formatDate(new Date(broadcast.created_at))}</TableCell>
+                            <TableCell className="text-right">
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                className="text-destructive hover:bg-destructive/10"
+                                onClick={() => {
+                                  if (window.confirm('Are you sure you want to delete this broadcast?')) {
+                                    deleteBroadcast.mutate(broadcast.id);
+                                  }
+                                }}
+                                disabled={deleteBroadcast.isPending}
+                              >
+                                <Trash2 className="h-4 w-4" />
+                              </Button>
+                            </TableCell>
+                          </TableRow>
+                        ))}
+                      </TableBody>
+                    </Table>
+                  </div>
                 )}
               </CardContent>
             </Card>
