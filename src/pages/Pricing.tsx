@@ -2,15 +2,27 @@ import { AppLayout } from '@/components/AppLayout';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
 import { useProfile } from '@/hooks/useProfile';
 import { useSubscription } from '@/hooks/useSubscription';
 import { formatDate } from '@/lib/format';
-import { Check, Crown, Zap, Star, AlertTriangle, ExternalLink } from 'lucide-react';
+import { Check, Crown, Zap, Star, AlertTriangle, ExternalLink, Loader2, Gift } from 'lucide-react';
 import { PLANS } from '@/lib/plans';
+import { useState } from 'react';
 
 export default function Pricing() {
   const { profile } = useProfile();
-  const { subscriptionStatus, daysUntilExpiry, isExpired, isExpiringSoon } = useSubscription();
+  const { subscriptionStatus, daysUntilExpiry, isExpired, isExpiringSoon, applyPromoCode } = useSubscription();
+  const [promoCode, setPromoCode] = useState('');
+
+  const handleApplyPromo = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!promoCode.trim()) return;
+
+    await applyPromoCode.mutateAsync(promoCode.trim());
+    setPromoCode('');
+  };
 
   const isTrialActive = subscriptionStatus === 'trial';
 
@@ -36,38 +48,60 @@ export default function Pricing() {
         {/* Current Status */}
         <Card className="border-primary/50 bg-primary/5">
           <CardContent className="p-6">
-            <div className="flex items-center justify-between flex-wrap gap-4">
+            <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
               <div className="flex items-center gap-3">
                 <div className="p-2 bg-primary/10 rounded-full">
                   <Crown className="h-6 w-6 text-primary" />
                 </div>
                 <div>
                   <p className="font-semibold">Current Plan: {profile?.plan_type === 'free' ? 'Free' : 'Professional'}</p>
-                  <p className="text-sm text-muted-foreground">
+                  <p className="text-sm text-muted-foreground flex items-center gap-2">
                     {isTrialActive && `Trial ends in ${daysUntilExpiry} days`}
                     {isExpired && 'Subscription expired'}
                     {subscriptionStatus === 'active' && !isTrialActive && profile?.subscription_expiry &&
                       `Active until ${formatDate(new Date(profile.subscription_expiry))}`
                     }
+                    {(isTrialActive || isExpired) && (
+                      <Badge variant={isExpired ? 'destructive' : 'secondary'} className="flex items-center gap-1 w-fit">
+                        {isExpired ? (
+                          <>
+                            <AlertTriangle className="h-3 w-3" />
+                            Expired
+                          </>
+                        ) : (
+                          <>
+                            <Zap className="h-3 w-3" />
+                            Trial Active
+                          </>
+                        )}
+                      </Badge>
+                    )}
                   </p>
                 </div>
               </div>
 
-              {(isTrialActive || isExpired) && (
-                <Badge variant={isExpired ? 'destructive' : 'secondary'} className="flex items-center gap-1">
-                  {isExpired ? (
-                    <>
-                      <AlertTriangle className="h-3 w-3" />
-                      Expired
-                    </>
-                  ) : (
-                    <>
-                      <Zap className="h-3 w-3" />
-                      Trial Active
-                    </>
-                  )}
-                </Badge>
-              )}
+              <div className="w-full md:w-auto mt-4 md:mt-0 pt-4 md:pt-0 border-t md:border-t-0 md:border-l border-border md:pl-6">
+                <form onSubmit={handleApplyPromo} className="space-y-2 max-w-sm">
+                  <Label htmlFor="promo" className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Have a promo code?</Label>
+                  <div className="flex gap-2">
+                    <Input
+                      id="promo"
+                      value={promoCode}
+                      onChange={(e) => setPromoCode(e.target.value.toUpperCase())}
+                      placeholder="Enter code..."
+                      className="h-9 w-full md:w-48 bg-background"
+                    />
+                    <Button type="submit" size="sm" className="h-9" disabled={applyPromoCode.isPending || !promoCode.trim()}>
+                      {applyPromoCode.isPending ? (
+                        <Loader2 className="h-4 w-4 animate-spin" />
+                      ) : (
+                        <Gift className="h-4 w-4 mr-1" />
+                      )}
+                      Claim
+                    </Button>
+                  </div>
+                </form>
+              </div>
             </div>
           </CardContent>
         </Card>
