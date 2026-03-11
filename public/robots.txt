@@ -1,16 +1,21 @@
-User-agent: Googlebot
-Allow: /
-
-User-agent: Bingbot
-Allow: /
-
-User-agent: Twitterbot
-Allow: /
-
-User-agent: facebookexternalhit
-Allow: /
-
+# Allow all crawlers on public pages
 User-agent: *
 Allow: /
+Allow: /login
+Allow: /signup
+Allow: /privacy
+Allow: /terms
 
+# Disallow private/authenticated app routes — no SEO value
+Disallow: /dashboard
+Disallow: /invoices
+Disallow: /clients
+Disallow: /messages
+Disallow: /payments
+Disallow: /settings
+Disallow: /pricing
+Disallow: /admin
+Disallow: /profile
+
+# Sitemap location
 Sitemap: https://imexglobals.com/sitemap.xml
