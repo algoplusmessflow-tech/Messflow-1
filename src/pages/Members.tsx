@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect } from 'react';
 import { format } from 'date-fns';
 import { AppLayout } from '@/components/AppLayout';
 import { Button } from '@/components/ui/button';
@@ -10,6 +10,8 @@ import { Badge } from '@/components/ui/badge';
 import { Switch } from '@/components/ui/switch';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Calendar } from '@/components/ui/calendar';
+import { Textarea } from '@/components/ui/textarea';
+import { supabase } from '@/integrations/supabase/client';
 import {
   Dialog,
   DialogContent,
@@ -37,12 +39,13 @@ import {
 } from '@/components/ui/select';
 import { useMembers } from '@/hooks/useMembers';
 import { useTransactions } from '@/hooks/useTransactions';
+import { useAuth } from '@/lib/auth';
 import { useProfile } from '@/hooks/useProfile';
 import { useFreeTierLimits } from '@/hooks/useFreeTierLimits';
 import { formatCurrency, formatDate, toDateInputValue, calculateExpiryDate, getDaysUntilExpiry } from '@/lib/format';
 import { generateMemberInvoice } from '@/lib/pdf-generator';
 import { shareInvoiceViaWhatsApp, createInvoicePDF } from '@/lib/whatsapp-pdf-share';
-import { Plus, Phone, Loader2, CreditCard, AlertTriangle, FileText, MessageCircle, Trash2, Search, Filter, X, Calendar as CalendarIcon, RefreshCw, History, Send, Crown, Upload, Share2, Pencil, UserPlus } from 'lucide-react';
+import { Plus, Phone, Loader2, CreditCard, AlertTriangle, FileText, MessageCircle, Trash2, Search, Filter, X, Calendar as CalendarIcon, RefreshCw, History, Send, Crown, Upload, Share2, Pencil, UserPlus, MapPin, UtensilsCrossed, Pause, SkipForward } from 'lucide-react';
 import { toast } from 'sonner';
 import type { Database } from '@/integrations/supabase/types';
 import { UpgradePlanModal } from '@/components/UpgradePlanModal';
@@ -51,11 +54,13 @@ import { MemberImportModal } from '@/components/MemberImportModal';
 import { MemberRenewalModal } from '@/components/MemberRenewalModal';
 import { TransactionHistoryModal } from '@/components/TransactionHistoryModal';
 import { cn } from '@/lib/utils';
+import { InlineAddSelect } from '@/components/InlineAddSelect';
 
 type PlanType = Database['public']['Enums']['plan_type'];
 type MemberStatus = Database['public']['Enums']['member_status'];
 
 export default function Members() {
+  const { user } = useAuth();
   const { members, isLoading, addMember, updateMember, deleteMember } = useMembers();
   const { addTransaction, getMemberTransactions } = useTransactions();
   const { profile, incrementInvoiceNumber, getNextInvoiceNumber } = useProfile();
@@ -86,6 +91,16 @@ export default function Members() {
     joining_date: null as Date | null,
     plan_expiry_date: null as Date | null,
     isPaid: true,
+    address: '',
+    delivery_area_id: '',
+    special_notes: '',
+    meal_type: 'both',
+    roti_quantity: 2,
+    rice_type: 'white_rice',
+    dietary_preference: 'both',
+    pause_service: false,
+    skip_weekends: false,
+    free_trial: false,
   });
   const [paymentAmount, setPaymentAmount] = useState('');
   const [paymentDate, setPaymentDate] = useState<Date | null>(new Date());
@@ -99,6 +114,42 @@ export default function Members() {
   const [planFilter, setPlanFilter] = useState<PlanType | 'all'>('all');
   const [showFilters, setShowFilters] = useState(false);
 
+  const [deliveryAreas, setDeliveryAreas] = useState<{ id: string; name: string }[]>([]);
+  const [riceOptions, setRiceOptions] = useState<{ value: string; label: string }[]>([]);
+
+  const defaultRiceOptions = [
+    { value: 'none', label: 'None' },
+    { value: 'white_rice', label: 'White Rice' },
+    { value: 'brown_rice', label: 'Brown Rice' },
+    { value: 'jeera_rice', label: 'Jeera Rice' },
+    { value: 'biryani', label: 'Biryani' },
+  ];
+
+  // Fetch delivery areas and rice options
+  useEffect(() => {
+    const fetchAreas = async () => {
+      const { data } = await supabase.from('delivery_areas').select('id, name').order('name');
+      if (data) setDeliveryAreas(data);
+    };
+    const fetchRice = async () => {
+      try {
+        const { data } = await supabase
+          .from('rice_options')
+          .select('name, label')
+          .order('sort_order');
+        if (data && data.length > 0) {
+          setRiceOptions(data.map((r: any) => ({ value: r.name, label: r.label })));
+        } else {
+          setRiceOptions(defaultRiceOptions);
+        }
+      } catch {
+        setRiceOptions(defaultRiceOptions);
+      }
+    };
+    fetchAreas();
+    fetchRice();
+  }, []);
+
   const [formData, setFormData] = useState({
     name: '',
     phone: '',
@@ -106,6 +157,16 @@ export default function Members() {
     monthly_fee: '',
     joining_date: toDateInputValue(new Date()),
     isPaid: true,
+    address: '',
+    delivery_area_id: '',
+    special_notes: '',
+    meal_type: 'both',
+    roti_quantity: 2,
+    rice_type: 'white_rice',
+    dietary_preference: 'both',
+    pause_service: false,
+    skip_weekends: false,
+    free_trial: false,
   });
 
   // Filtered members
@@ -157,7 +218,17 @@ export default function Members() {
       status: 'active',
       joining_date: joiningDate.toISOString(),
       plan_expiry_date: expiryDate.toISOString(),
-    });
+      address: formData.address || null,
+      delivery_area_id: formData.delivery_area_id || null,
+      special_notes: formData.special_notes || null,
+      meal_type: formData.meal_type,
+      roti_quantity: formData.roti_quantity,
+      rice_type: formData.rice_type,
+      dietary_preference: formData.dietary_preference,
+      pause_service: formData.pause_service,
+      skip_weekends: formData.skip_weekends,
+      free_trial: formData.free_trial,
+    } as any);
 
     if (formData.isPaid && newMember) {
       await addTransaction.mutateAsync({
@@ -182,6 +253,16 @@ export default function Members() {
       monthly_fee: '',
       joining_date: toDateInputValue(new Date()),
       isPaid: true,
+      address: '',
+      delivery_area_id: '',
+      special_notes: '',
+      meal_type: 'both',
+      roti_quantity: 2,
+      rice_type: 'white_rice',
+      dietary_preference: 'both',
+      pause_service: false,
+      skip_weekends: false,
+      free_trial: false,
     });
     setIsAddOpen(false);
   };
@@ -270,7 +351,7 @@ export default function Members() {
     const subtotal = lastPaymentInfo.amount / (1 + taxRate / 100);
     const taxAmount = lastPaymentInfo.amount - subtotal;
 
-    const message = `🧾 *Payment Receipt*
+    const message = `\u{1F9FE} *Payment Receipt*
 
 *${profile.business_name}*
 ${profile.tax_trn ? `TRN: ${profile.tax_trn}` : ''}
@@ -281,12 +362,12 @@ Thank you for your payment!
 
 Subscription: AED ${subtotal.toFixed(2)}
 ${taxName} (${taxRate}%): AED ${taxAmount.toFixed(2)}
-─────────────
+\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500
 *Total Paid: AED ${lastPaymentInfo.amount.toFixed(2)}*
 
 Date: ${formatDate(new Date())}
 
-Thank you for your business! 🙏`;
+Thank you for your business! \u{1F64F}`;
 
     const cleanPhone = lastPaymentInfo.phone.replace(/[\s-]/g, '');
     const phoneWithCode = cleanPhone.startsWith('+') ? cleanPhone.slice(1) :
@@ -335,7 +416,7 @@ Thank you for your business! 🙏`;
             cleanPhone.startsWith('971') ? cleanPhone :
               `971${cleanPhone.startsWith('0') ? cleanPhone.slice(1) : cleanPhone}`;
 
-        const message = `🧾 *Invoice ${invoiceNumber}* - ${profile.business_name}\nAmount: AED ${lastPaymentInfo.amount.toFixed(2)}`;
+        const message = `\u{1F9FE} *Invoice ${invoiceNumber}* - ${profile.business_name}\nAmount: AED ${lastPaymentInfo.amount.toFixed(2)}`;
 
         setShareFile({
           blob: result,
@@ -356,7 +437,7 @@ Thank you for your business! 🙏`;
     if (!profile) return;
 
     unpaidMembers.forEach((member, index) => {
-      const message = `📢 *Payment Reminder*
+      const message = `\u{1F4E2} *Payment Reminder*
 
 *${profile.business_name}*
 
@@ -368,7 +449,7 @@ ${member.plan_expiry_date ? `Due Date: ${formatDate(new Date(member.plan_expiry_
 
 ${profile.payment_link ? `Pay online: ${profile.payment_link}` : ''}
 
-Thank you for your prompt attention! 🙏`;
+Thank you for your prompt attention! \u{1F64F}`;
 
       const cleanPhone = member.phone.replace(/[\s-]/g, '');
       const phoneWithCode = cleanPhone.startsWith('+') ? cleanPhone.slice(1) :
@@ -390,7 +471,7 @@ Thank you for your prompt attention! 🙏`;
   const handleSingleReminder = (member: typeof members[0]) => {
     if (!profile) return;
 
-    const message = `📢 *Payment Reminder*
+    const message = `\u{1F4E2} *Payment Reminder*
 
 *${profile.business_name}*
 
@@ -402,7 +483,7 @@ ${member.plan_expiry_date ? `Due Date: ${formatDate(new Date(member.plan_expiry_
 
 ${profile.payment_link ? `Pay online: ${profile.payment_link}` : ''}
 
-Thank you for your prompt attention! 🙏`;
+Thank you for your prompt attention! \u{1F64F}`;
 
     const cleanPhone = member.phone.replace(/[\s-]/g, '');
     const phoneWithCode = cleanPhone.startsWith('+') ? cleanPhone.slice(1) :
@@ -432,16 +513,27 @@ Thank you for your prompt attention! 🙏`;
   };
 
   const openEdit = (member: typeof members[0]) => {
+    const m = member as any;
     setSelectedMember(member);
     setEditFormData({
-      name: member.name,
-      phone: member.phone,
-      plan_type: member.plan_type,
-      monthly_fee: String(member.monthly_fee),
-      status: member.status,
-      joining_date: member.joining_date ? new Date(member.joining_date) : null,
-      plan_expiry_date: member.plan_expiry_date ? new Date(member.plan_expiry_date) : null,
-      isPaid: Number(member.balance) === 0,
+      name: m.name,
+      phone: m.phone,
+      plan_type: m.plan_type,
+      monthly_fee: String(m.monthly_fee),
+      status: m.status,
+      joining_date: m.joining_date ? new Date(m.joining_date) : null,
+      plan_expiry_date: m.plan_expiry_date ? new Date(m.plan_expiry_date) : null,
+      isPaid: Number(m.balance) === 0,
+      address: m.address || '',
+      delivery_area_id: m.delivery_area_id || '',
+      special_notes: m.special_notes || '',
+      meal_type: m.meal_type || 'both',
+      roti_quantity: m.roti_quantity ?? 2,
+      rice_type: m.rice_type || 'white_rice',
+      dietary_preference: m.dietary_preference || 'both',
+      pause_service: m.pause_service || false,
+      skip_weekends: m.skip_weekends || false,
+      free_trial: m.free_trial || false,
     });
     setIsEditOpen(true);
   };
@@ -460,7 +552,17 @@ Thank you for your prompt attention! 🙏`;
       joining_date: editFormData.joining_date?.toISOString(),
       plan_expiry_date: editFormData.plan_expiry_date?.toISOString(),
       balance: editFormData.isPaid ? 0 : (Number(selectedMember.balance) > 0 ? Number(selectedMember.balance) : Number(editFormData.monthly_fee)),
-    });
+      address: editFormData.address || null,
+      delivery_area_id: editFormData.delivery_area_id || null,
+      special_notes: editFormData.special_notes || null,
+      meal_type: editFormData.meal_type,
+      roti_quantity: editFormData.roti_quantity,
+      rice_type: editFormData.rice_type,
+      dietary_preference: editFormData.dietary_preference,
+      pause_service: editFormData.pause_service,
+      skip_weekends: editFormData.skip_weekends,
+      free_trial: editFormData.free_trial,
+    } as any);
 
     setIsEditOpen(false);
     setSelectedMember(null);
@@ -484,6 +586,57 @@ Thank you for your prompt attention! 🙏`;
     if (!selectedMember) return 0;
     const amount = Number(paymentAmount) || 0;
     return Math.max(0, Number(selectedMember.balance) - amount);
+  };
+
+  // Inline add handlers for zones and rice types
+  const handleAddZone = async (name: string): Promise<string | null> => {
+    try {
+      const { data, error } = await supabase
+        .from('delivery_areas')
+        .insert({ owner_id: user?.id || '', name })
+        .select()
+        .single();
+      if (error) throw error;
+      setDeliveryAreas((prev) => [...prev, { id: data.id, name: data.name }].sort((a, b) => a.name.localeCompare(b.name)));
+      toast.success(`Zone "${name}" created!`);
+      return data.id;
+    } catch (err: any) {
+      toast.error('Failed to create zone: ' + err.message);
+      return null;
+    }
+  };
+
+  const handleAddRiceOption = async (name: string): Promise<string | null> => {
+    try {
+      const value = name.toLowerCase().replace(/\s+/g, '_');
+      const { error } = await supabase
+        .from('rice_options')
+        .insert({ owner_id: user?.id || '', name: value, label: name, sort_order: riceOptions.length });
+      if (error) throw error;
+      setRiceOptions((prev) => [...prev, { value, label: name }]);
+      toast.success(`Rice type "${name}" added!`);
+      return value;
+    } catch (err: any) {
+      toast.error('Failed to add rice type: ' + err.message);
+      return null;
+    }
+  };
+
+  const handleEditRiceOption = async (oldValue: string, newName: string): Promise<boolean> => {
+    try {
+      const newValue = newName.toLowerCase().replace(/\s+/g, '_');
+      const { error } = await supabase
+        .from('rice_options')
+        .update({ name: newValue, label: newName })
+        .eq('name', oldValue);
+      if (error) throw error;
+      setRiceOptions((prev) => prev.map((r) => r.value === oldValue ? { value: newValue, label: newName } : r));
+      toast.success(`Rice type updated!`);
+      return true;
+    } catch (err: any) {
+      toast.error('Failed: ' + err.message);
+      return false;
+    }
   };
 
   const getTransactionTypeLabel = (type: string) => {
@@ -532,7 +685,7 @@ Thank you for your prompt attention! 🙏`;
                   Add
                 </Button>
               </DialogTrigger>
-              <DialogContent>
+              <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
                 <DialogHeader>
                   <DialogTitle>Add New Member</DialogTitle>
                 </DialogHeader>
@@ -580,6 +733,7 @@ Thank you for your prompt attention! 🙏`;
                         <SelectItem value="1-time">1 Time</SelectItem>
                         <SelectItem value="2-time">2 Times</SelectItem>
                         <SelectItem value="3-time">3 Times</SelectItem>
+                        <SelectItem value="custom">Custom</SelectItem>
                       </SelectContent>
                     </Select>
                   </div>
@@ -593,6 +747,123 @@ Thank you for your prompt attention! 🙏`;
                       placeholder="1500"
                       required
                     />
+                  </div>
+
+                  {/* Address & Delivery Area */}
+                  <div className="space-y-2">
+                    <Label htmlFor="address">Address</Label>
+                    <Input
+                      id="address"
+                      value={formData.address}
+                      onChange={(e) => setFormData({ ...formData, address: e.target.value })}
+                      placeholder="Delivery address"
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label>Delivery Area / Zone</Label>
+                    <InlineAddSelect
+                      value={formData.delivery_area_id}
+                      onValueChange={(value) => setFormData({ ...formData, delivery_area_id: value })}
+                      options={deliveryAreas.map((a) => ({ value: a.id, label: a.name }))}
+                      placeholder="Select delivery area"
+                      onAdd={handleAddZone}
+                      addLabel="Add new zone"
+                    />
+                  </div>
+
+                  {/* Food Preferences */}
+                  <div className="grid grid-cols-2 gap-4">
+                    <div className="space-y-2">
+                      <Label>Meal Type</Label>
+                      <Select
+                        value={formData.meal_type}
+                        onValueChange={(value) => setFormData({ ...formData, meal_type: value })}
+                      >
+                        <SelectTrigger><SelectValue /></SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="lunch">Lunch</SelectItem>
+                          <SelectItem value="dinner">Dinner</SelectItem>
+                          <SelectItem value="both">Both</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <div className="space-y-2">
+                      <Label>Roti Quantity</Label>
+                      <Input
+                        type="number"
+                        min="0"
+                        value={formData.roti_quantity}
+                        onChange={(e) => setFormData({ ...formData, roti_quantity: parseInt(e.target.value) || 0 })}
+                      />
+                    </div>
+                  </div>
+                  <div className="grid grid-cols-2 gap-4">
+                    <div className="space-y-2">
+                      <Label>Rice Type</Label>
+                      <InlineAddSelect
+                        value={formData.rice_type}
+                        onValueChange={(value) => setFormData({ ...formData, rice_type: value })}
+                        options={riceOptions}
+                        placeholder="Select rice type"
+                        onAdd={handleAddRiceOption}
+                        onEdit={handleEditRiceOption}
+                        addLabel="Add rice type"
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label>Dietary Preference</Label>
+                      <Select
+                        value={formData.dietary_preference}
+                        onValueChange={(value) => setFormData({ ...formData, dietary_preference: value })}
+                      >
+                        <SelectTrigger><SelectValue /></SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="veg">Veg</SelectItem>
+                          <SelectItem value="non_veg">Non-Veg</SelectItem>
+                          <SelectItem value="both">Both</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+                  </div>
+
+                  {/* Special Notes */}
+                  <div className="space-y-2">
+                    <Label htmlFor="special_notes">Special Notes</Label>
+                    <Textarea
+                      id="special_notes"
+                      value={formData.special_notes}
+                      onChange={(e) => setFormData({ ...formData, special_notes: e.target.value })}
+                      placeholder="Dietary requirements, allergies, preferences..."
+                      rows={2}
+                    />
+                  </div>
+
+                  {/* Service Toggles */}
+                  <div className="grid grid-cols-2 gap-3">
+                    <div className="flex items-center justify-between p-3 rounded-lg border bg-muted/30">
+                      <Label htmlFor="pause-toggle" className="text-sm cursor-pointer">Pause Service</Label>
+                      <Switch
+                        id="pause-toggle"
+                        checked={formData.pause_service}
+                        onCheckedChange={(checked) => setFormData({ ...formData, pause_service: checked })}
+                      />
+                    </div>
+                    <div className="flex items-center justify-between p-3 rounded-lg border bg-muted/30">
+                      <Label htmlFor="weekends-toggle" className="text-sm cursor-pointer">Skip Weekends</Label>
+                      <Switch
+                        id="weekends-toggle"
+                        checked={formData.skip_weekends}
+                        onCheckedChange={(checked) => setFormData({ ...formData, skip_weekends: checked })}
+                      />
+                    </div>
+                    <div className="flex items-center justify-between p-3 rounded-lg border bg-muted/30">
+                      <Label htmlFor="trial-toggle" className="text-sm cursor-pointer">Free Trial</Label>
+                      <Switch
+                        id="trial-toggle"
+                        checked={formData.free_trial}
+                        onCheckedChange={(checked) => setFormData({ ...formData, free_trial: checked })}
+                      />
+                    </div>
                   </div>
 
                   <div className="flex items-center justify-between p-4 rounded-lg border bg-muted/30">
@@ -690,6 +961,7 @@ Thank you for your prompt attention! 🙏`;
                   <SelectItem value="1-time">1 Time</SelectItem>
                   <SelectItem value="2-time">2 Times</SelectItem>
                   <SelectItem value="3-time">3 Times</SelectItem>
+                  <SelectItem value="custom">Custom</SelectItem>
                 </SelectContent>
               </Select>
 
@@ -767,6 +1039,36 @@ Thank you for your prompt attention! 🙏`;
                             <span>
                               Expires: {formatDate(new Date(member.plan_expiry_date))}
                             </span>
+                          )}
+                          {(member as any).address && (
+                            <span className="flex items-center gap-1">
+                              <MapPin className="h-3 w-3" />
+                              {(member as any).address}
+                            </span>
+                          )}
+                          {(member as any).meal_type && (member as any).meal_type !== 'both' && (
+                            <span className="flex items-center gap-1">
+                              <UtensilsCrossed className="h-3 w-3" />
+                              {(member as any).meal_type === 'lunch' ? 'Lunch' : 'Dinner'}
+                            </span>
+                          )}
+                          {(member as any).roti_quantity > 0 && (
+                            <span>Roti: {(member as any).roti_quantity}</span>
+                          )}
+                          {(member as any).dietary_preference && (member as any).dietary_preference !== 'both' && (
+                            <Badge variant="outline" className="text-[10px] h-4 px-1">
+                              {(member as any).dietary_preference === 'veg' ? 'Veg' : 'Non-Veg'}
+                            </Badge>
+                          )}
+                          {(member as any).pause_service && (
+                            <Badge variant="outline" className="text-[10px] h-4 px-1 border-amber-500 text-amber-500">
+                              <Pause className="h-2 w-2 mr-0.5" /> Paused
+                            </Badge>
+                          )}
+                          {(member as any).free_trial && (
+                            <Badge variant="outline" className="text-[10px] h-4 px-1 border-green-500 text-green-500">
+                              Trial
+                            </Badge>
                           )}
                         </div>
                       </div>
@@ -938,7 +1240,7 @@ Thank you for your prompt attention! 🙏`;
                       <span className={`font-semibold ${getRemainingAfterPayment() > 0 ? 'text-destructive' : 'text-primary'}`}>
                         {getRemainingAfterPayment() > 0
                           ? `${formatCurrency(getRemainingAfterPayment())} remaining`
-                          : 'Fully Paid ✓'
+                          : 'Fully Paid \u2713'
                         }
                       </span>
                     </div>
@@ -956,7 +1258,7 @@ Thank you for your prompt attention! 🙏`;
 
         {/* Edit Member Dialog */}
         <Dialog open={isEditOpen} onOpenChange={setIsEditOpen}>
-          <DialogContent>
+          <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
             <DialogHeader>
               <DialogTitle>Edit Member</DialogTitle>
             </DialogHeader>
@@ -994,6 +1296,7 @@ Thank you for your prompt attention! 🙏`;
                     <SelectItem value="1-time">1 Time</SelectItem>
                     <SelectItem value="2-time">2 Times</SelectItem>
                     <SelectItem value="3-time">3 Times</SelectItem>
+                    <SelectItem value="custom">Custom</SelectItem>
                   </SelectContent>
                 </Select>
               </div>
@@ -1008,6 +1311,99 @@ Thank you for your prompt attention! 🙏`;
                   required
                 />
               </div>
+
+              {/* Address & Delivery Area */}
+              <div className="space-y-2">
+                <Label>Address</Label>
+                <Input
+                  value={editFormData.address}
+                  onChange={(e) => setEditFormData({ ...editFormData, address: e.target.value })}
+                  placeholder="Delivery address"
+                />
+              </div>
+              <div className="space-y-2">
+                <Label>Delivery Area / Zone</Label>
+                <InlineAddSelect
+                  value={editFormData.delivery_area_id}
+                  onValueChange={(value) => setEditFormData({ ...editFormData, delivery_area_id: value })}
+                  options={deliveryAreas.map((a) => ({ value: a.id, label: a.name }))}
+                  placeholder="Select delivery area"
+                  onAdd={handleAddZone}
+                  addLabel="Add new zone"
+                />
+              </div>
+
+              {/* Food Preferences */}
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label>Meal Type</Label>
+                  <Select value={editFormData.meal_type} onValueChange={(v) => setEditFormData({ ...editFormData, meal_type: v })}>
+                    <SelectTrigger><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="lunch">Lunch</SelectItem>
+                      <SelectItem value="dinner">Dinner</SelectItem>
+                      <SelectItem value="both">Both</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="space-y-2">
+                  <Label>Roti Quantity</Label>
+                  <Input type="number" min="0" value={editFormData.roti_quantity} onChange={(e) => setEditFormData({ ...editFormData, roti_quantity: parseInt(e.target.value) || 0 })} />
+                </div>
+              </div>
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label>Rice Type</Label>
+                  <InlineAddSelect
+                    value={editFormData.rice_type}
+                    onValueChange={(v) => setEditFormData({ ...editFormData, rice_type: v })}
+                    options={riceOptions}
+                    placeholder="Select rice type"
+                    onAdd={handleAddRiceOption}
+                    onEdit={handleEditRiceOption}
+                    addLabel="Add rice type"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label>Dietary Preference</Label>
+                  <Select value={editFormData.dietary_preference} onValueChange={(v) => setEditFormData({ ...editFormData, dietary_preference: v })}>
+                    <SelectTrigger><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="veg">Veg</SelectItem>
+                      <SelectItem value="non_veg">Non-Veg</SelectItem>
+                      <SelectItem value="both">Both</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+              </div>
+
+              {/* Special Notes */}
+              <div className="space-y-2">
+                <Label>Special Notes</Label>
+                <Textarea
+                  value={editFormData.special_notes}
+                  onChange={(e) => setEditFormData({ ...editFormData, special_notes: e.target.value })}
+                  placeholder="Dietary requirements, allergies, preferences..."
+                  rows={2}
+                />
+              </div>
+
+              {/* Service Toggles */}
+              <div className="grid grid-cols-2 gap-3">
+                <div className="flex items-center justify-between p-3 rounded-lg border bg-muted/30">
+                  <Label className="text-sm cursor-pointer">Pause Service</Label>
+                  <Switch checked={editFormData.pause_service} onCheckedChange={(c) => setEditFormData({ ...editFormData, pause_service: c })} />
+                </div>
+                <div className="flex items-center justify-between p-3 rounded-lg border bg-muted/30">
+                  <Label className="text-sm cursor-pointer">Skip Weekends</Label>
+                  <Switch checked={editFormData.skip_weekends} onCheckedChange={(c) => setEditFormData({ ...editFormData, skip_weekends: c })} />
+                </div>
+                <div className="flex items-center justify-between p-3 rounded-lg border bg-muted/30">
+                  <Label className="text-sm cursor-pointer">Free Trial</Label>
+                  <Switch checked={editFormData.free_trial} onCheckedChange={(c) => setEditFormData({ ...editFormData, free_trial: c })} />
+                </div>
+              </div>
+
               <div className="flex items-center justify-between p-4 rounded-lg border bg-muted/30">
                 <div className="space-y-0.5">
                   <Label htmlFor="edit-paid-toggle" className="text-base">Payment Status</Label>
@@ -1167,7 +1563,7 @@ Thank you for your prompt attention! 🙏`;
         <Dialog open={isInvoiceDialogOpen} onOpenChange={setIsInvoiceDialogOpen}>
           <DialogContent>
             <DialogHeader>
-              <DialogTitle>Invoice Ready! 🎉</DialogTitle>
+              <DialogTitle>Invoice Ready! {'\u{1F389}'}</DialogTitle>
             </DialogHeader>
             {lastPaymentInfo && (
               <div className="space-y-4">

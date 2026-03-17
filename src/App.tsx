@@ -9,6 +9,7 @@ import { SubscriptionGuard } from "@/components/SubscriptionGuard";
 import { SubscriptionBanner } from "@/components/SubscriptionBanner";
 import { BroadcastModal } from "@/components/BroadcastModal";
 import { LoadingSpinner } from "@/components/LoadingSpinner";
+import { ErrorBoundary } from "@/components/ErrorBoundary";
 import { Suspense, lazy } from "react";
 
 // Lazy load pages
@@ -29,19 +30,31 @@ const SuperAdmin = lazy(() => import("./pages/SuperAdmin"));
 const SuperAdminSecurity = lazy(() => import("./pages/SuperAdminSecurity"));
 const PrivacyPolicy = lazy(() => import("./pages/PrivacyPolicy"));
 const TermsOfService = lazy(() => import("./pages/TermsOfService"));
+const DeliveryManagement = lazy(() => import("./pages/DeliveryManagement"));
+const DeliveryZones = lazy(() => import("./pages/DeliveryZones"));
 const NotFound = lazy(() => import("./pages/NotFound"));
+const Sales = lazy(() => import("./pages/Sales"));
+
+// Regular imports for new pages (to avoid lazy loading issues)
+import Invoices from "./pages/Invoices";
+import DriverPortal from "./pages/DriverPortal";
+import CustomerPortal from "./pages/CustomerPortal";
+import SalesPortal from "./pages/SalesPortal";
+import KitchenPrep from "./pages/KitchenPrep";
+import Referrals from "./pages/Referrals";
 
 const queryClient = new QueryClient();
 
 const App = () => (
-  <QueryClientProvider client={queryClient}>
-    <AuthProvider>
-      <TooltipProvider>
-        <Toaster />
-        <Sonner />
-        <BrowserRouter>
-          <Suspense fallback={<LoadingSpinner />}>
-            <Routes>
+  <ErrorBoundary>
+    <QueryClientProvider client={queryClient}>
+      <AuthProvider>
+        <TooltipProvider>
+          <Toaster />
+          <Sonner />
+          <BrowserRouter>
+            <Suspense fallback={<LoadingSpinner />}>
+              <Routes>
               <Route path="/" element={<PublicHome />} />
               <Route path="/login" element={<Login />} />
               <Route path="/signup" element={<Signup />} />
@@ -160,8 +173,80 @@ const App = () => (
                   </ProtectedRoute>
                 }
               />
+              <Route
+                path="/delivery"
+                element={
+                  <ProtectedRoute>
+                    <SubscriptionGuard>
+                      <SubscriptionBanner />
+                      <DeliveryManagement />
+                    </SubscriptionGuard>
+                  </ProtectedRoute>
+                }
+              />
+              <Route
+                path="/invoices"
+                element={
+                  <ProtectedRoute>
+                    <SubscriptionGuard>
+                      <SubscriptionBanner />
+                      <Invoices />
+                    </SubscriptionGuard>
+                  </ProtectedRoute>
+                }
+              />
+              <Route
+                path="/sales"
+                element={
+                  <ProtectedRoute>
+                    <SubscriptionGuard>
+                      <SubscriptionBanner />
+                      <Sales />
+                    </SubscriptionGuard>
+                  </ProtectedRoute>
+                }
+              />
+              <Route
+                path="/kitchen-prep"
+                element={
+                  <ProtectedRoute>
+                    <SubscriptionGuard>
+                      <SubscriptionBanner />
+                      <KitchenPrep />
+                    </SubscriptionGuard>
+                  </ProtectedRoute>
+                }
+              />
+              <Route
+                path="/referrals"
+                element={
+                  <ProtectedRoute>
+                    <SubscriptionGuard>
+                      <SubscriptionBanner />
+                      <Referrals />
+                    </SubscriptionGuard>
+                  </ProtectedRoute>
+                }
+              />
+              <Route
+                path="/zones"
+                element={
+                  <ProtectedRoute>
+                    <SubscriptionGuard>
+                      <SubscriptionBanner />
+                      <DeliveryZones />
+                    </SubscriptionGuard>
+                  </ProtectedRoute>
+                }
+              />
               <Route path="/privacy" element={<PrivacyPolicy />} />
               <Route path="/terms" element={<TermsOfService />} />
+              <Route path="/driver/:ownerId" element={<DriverPortal />} />
+              <Route path="/customer/:ownerId" element={<CustomerPortal />} />
+              <Route path="/:slug/customer" element={<CustomerPortal />} />
+              <Route path="/:slug/driver" element={<DriverPortal />} />
+              <Route path="/:slug/register" element={<CustomerPortal />} />
+              <Route path="/:slug/sales/:token" element={<SalesPortal />} />
               <Route path="*" element={<NotFound />} />
             </Routes>
           </Suspense>
@@ -169,6 +254,7 @@ const App = () => (
       </TooltipProvider>
     </AuthProvider>
   </QueryClientProvider>
+  </ErrorBoundary>
 );
 
 export default App;

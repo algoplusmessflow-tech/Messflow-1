@@ -3,6 +3,7 @@ import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/lib/auth';
 import { useProfile } from '@/hooks/useProfile';
+import type { Profile } from '@/integrations/supabase/types';
 
 export const FREE_TIER_LIMITS = {
   MEMBERS: 50,
@@ -17,9 +18,9 @@ export function useFreeTierLimits() {
   const { user } = useAuth();
   const { profile } = useProfile();
   
-  const planType = (profile as any)?.plan_type || 'free';
+  const planType = profile?.plan_type || 'free';
   const isPro = planType === 'pro';
-  const invoiceCount = (profile as any)?.invoice_count || 0;
+  const invoiceCount = profile?.invoice_count || 0;
 
   // Count members
   const { data: memberCount = 0 } = useQuery({

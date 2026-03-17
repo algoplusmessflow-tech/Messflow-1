@@ -10,7 +10,7 @@ type MemberInsert = Database['public']['Tables']['members']['Insert'];
 type MemberUpdate = Database['public']['Tables']['members']['Update'];
 
 export function useMembers() {
-  const { user } = useAuth();
+  const { user, loading: authLoading } = useAuth();
   const queryClient = useQueryClient();
 
   const { data: members = [], isLoading } = useQuery({
@@ -23,10 +23,13 @@ export function useMembers() {
         .eq('owner_id', user.id)
         .order('created_at', { ascending: false });
       
-      if (error) throw error;
+      if (error) {
+        console.error('Error fetching members:', error);
+        throw error;
+      }
       return data as Member[];
     },
-    enabled: !!user,
+    enabled: !!user && !authLoading,
   });
 
   // Realtime subscription
@@ -44,7 +47,7 @@ export function useMembers() {
           filter: `owner_id=eq.${user.id}`,
         },
         () => {
-          queryClient.invalidateQueries({ queryKey: ['members', user.id] });
+          queryClient.invalidateQueries({ queryKey: ['members', user?.id] });
         }
       )
       .subscribe();
@@ -68,7 +71,7 @@ export function useMembers() {
       return data;
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['members'] });
+      queryClient.invalidateQueries({ queryKey: ['members', user?.id] });
       toast.success('Member added successfully!');
     },
     onError: (error) => {
@@ -89,7 +92,7 @@ export function useMembers() {
       return data;
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['members'] });
+      queryClient.invalidateQueries({ queryKey: ['members', user?.id] });
       toast.success('Member updated successfully!');
     },
     onError: (error) => {
@@ -107,7 +110,7 @@ export function useMembers() {
       if (error) throw error;
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['members'] });
+      queryClient.invalidateQueries({ queryKey: ['members', user?.id] });
       toast.success('Member deleted successfully!');
     },
     onError: (error) => {

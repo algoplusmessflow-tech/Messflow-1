@@ -15,20 +15,33 @@ import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/lib/auth';
 import { useQueryClient } from '@tanstack/react-query';
 import { 
-  Settings as SettingsIcon, 
-  FileText, 
-  Database, 
+  Building2, 
+  Receipt, 
+  HardDrive, 
   Trash2, 
   Download,
   AlertTriangle,
-  HardDrive,
-  MessageSquare,
+  Cloud,
+  MessageCircle,
   Eye,
   EyeOff,
-  Building,
-  Coins,
-  Image
+  Wallet,
+  Globe,
+  Link2,
+  Truck,
+  Copy,
+  Check,
+  Percent,
+  FileCheck,
+  BarChart3,
+  Zap,
+  KeyRound,
+  Info,
+  Users,
+  MapPin,
+  RefreshCw
 } from 'lucide-react';
+import { generateSlug } from '@/lib/slug';
 import { CompanyLogoUpload } from '@/components/CompanyLogoUpload';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from '@/components/ui/dialog';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
@@ -37,7 +50,7 @@ import { generateExpenseReport } from '@/lib/pdf-generator';
 
 export default function Settings() {
   const { user } = useAuth();
-  const { profile, isLoading: profileLoading } = useProfile();
+  const { profile } = useProfile();
   const { expenses } = useExpenses();
   const { storageUsed, storageLimit, formatBytes, deleteOldReceipts } = useStorageManager();
   const queryClient = useQueryClient();
@@ -68,6 +81,30 @@ export default function Settings() {
   const [cleanupDate, setCleanupDate] = useState('');
   const [cleaning, setCleaning] = useState(false);
 
+  // Customer Portal Link
+  const [customerPortalLink, setCustomerPortalLink] = useState('');
+  const [copiedCustomerLink, setCopiedCustomerLink] = useState(false);
+
+  // Driver Access Link
+  const [driverPortalLink, setDriverPortalLink] = useState('');
+  const [copiedDriverLink, setCopiedDriverLink] = useState(false);
+
+  // Sales Portal Link
+  const [salesPortalLink, setSalesPortalLink] = useState('');
+  const [copiedSalesLink, setCopiedSalesLink] = useState(false);
+
+  // Slug-based Links
+  const [slugBasedCustomerLink, setSlugBasedCustomerLink] = useState('');
+  const [slugBasedDriverLink, setSlugBasedDriverLink] = useState('');
+  const [slugBasedRegisterLink, setSlugBasedRegisterLink] = useState('');
+  const [slug, setSlug] = useState('');
+
+  // Invoice Settings
+  const [invoicePrefix, setInvoicePrefix] = useState('INV');
+  const [invoiceCompanyAddress, setInvoiceCompanyAddress] = useState('');
+  const [invoiceFooter, setInvoiceFooter] = useState('');
+  const [savingInvoiceSettings, setSavingInvoiceSettings] = useState(false);
+
   // Initialize from profile
   useEffect(() => {
     if (profile) {
@@ -77,8 +114,39 @@ export default function Settings() {
       setWhatsappApiKey(profile.whatsapp_api_key || '');
       setCompanyAddress((profile as any).company_address || '');
       setCurrency(((profile as any).currency || 'AED') as CurrencyCode);
+      
+      const appUrl = import.meta.env.VITE_APP_URL || 'https://messflow.app';
+      const businessSlug = (profile as any).business_slug || generateSlug(profile.business_name);
+      
+      if (profile.user_id) {
+        setCustomerPortalLink(`${appUrl}/customer/${profile.user_id}`);
+        setDriverPortalLink(`${appUrl}/driver/${profile.user_id}`);
+        setSlug(businessSlug);
+        setSlugBasedCustomerLink(`${appUrl}/${businessSlug}/customer`);
+        setSlugBasedDriverLink(`${appUrl}/${businessSlug}/driver`);
+        setSlugBasedRegisterLink(`${appUrl}/${businessSlug}/register`);
+        setSalesPortalLink(`${appUrl}/${businessSlug}/sales`);
+      }
     }
   }, [profile]);
+
+  useEffect(() => {
+    const fetchInvoiceSettings = async () => {
+      if (!user) return;
+      const { data } = await supabase
+        .from('invoice_settings')
+        .select('*')
+        .eq('owner_id', user.id)
+        .single();
+      
+      if (data) {
+        setInvoicePrefix(data.invoice_prefix || 'INV');
+        setInvoiceCompanyAddress(data.company_address || '');
+        setInvoiceFooter((profile as any)?.company_address || '');
+      }
+    };
+    fetchInvoiceSettings();
+  }, [user, profile]);
 
   const saveTaxSettings = async () => {
     if (!user) return;
@@ -202,125 +270,492 @@ export default function Settings() {
 
   const storagePercentage = storageLimit > 0 ? (storageUsed / storageLimit) * 100 : 0;
 
+  const handleCopyCustomerLink = async () => {
+    try {
+      await navigator.clipboard.writeText(customerPortalLink);
+      setCopiedCustomerLink(true);
+      toast.success('Customer portal link copied!');
+      setTimeout(() => setCopiedCustomerLink(false), 2000);
+    } catch (error) {
+      toast.error('Failed to copy link');
+    }
+  };
+
+  const handleCopyDriverLink = async () => {
+    try {
+      await navigator.clipboard.writeText(driverPortalLink);
+      setCopiedDriverLink(true);
+      toast.success('Driver access link copied!');
+      setTimeout(() => setCopiedDriverLink(false), 2000);
+    } catch (error) {
+      toast.error('Failed to copy link');
+    }
+  };
+
+  const handleCopySlugCustomerLink = async () => {
+    try {
+      await navigator.clipboard.writeText(slugBasedCustomerLink);
+      toast.success('Slug-based customer link copied!');
+    } catch (error) {
+      toast.error('Failed to copy link');
+    }
+  };
+
+  const handleCopySlugDriverLink = async () => {
+    try {
+      await navigator.clipboard.writeText(slugBasedDriverLink);
+      toast.success('Slug-based driver link copied!');
+    } catch (error) {
+      toast.error('Failed to copy link');
+    }
+  };
+
+  const handleCopySlugRegisterLink = async () => {
+    try {
+      await navigator.clipboard.writeText(slugBasedRegisterLink);
+      toast.success('Customer registration link copied!');
+    } catch (error) {
+      toast.error('Failed to copy link');
+    }
+  };
+
+  const handleCopySalesLink = async () => {
+    try {
+      await navigator.clipboard.writeText(salesPortalLink);
+      toast.success('Sales portal link copied!');
+      setTimeout(() => setCopiedSalesLink(false), 2000);
+    } catch (error) {
+      toast.error('Failed to copy link');
+    }
+  };
+
+  const saveInvoiceSettings = async () => {
+    if (!user) return;
+    setSavingInvoiceSettings(true);
+    try {
+      const { error } = await supabase
+        .from('invoice_settings')
+        .upsert({
+          owner_id: user.id,
+          invoice_prefix: invoicePrefix,
+          company_address: invoiceCompanyAddress,
+          updated_at: new Date().toISOString(),
+        }, { onConflict: 'owner_id' });
+
+      if (error) throw error;
+      toast.success('Invoice settings saved!');
+    } catch (error: any) {
+      toast.error('Failed to save settings: ' + error.message);
+    } finally {
+      setSavingInvoiceSettings(false);
+    }
+  };
+
   return (
     <AppLayout>
       <div className="space-y-6">
-        <div>
-          <h1 className="text-2xl font-bold">Settings</h1>
-          <p className="text-muted-foreground">Manage your mess settings and data</p>
+        <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+          <div>
+            <h1 className="text-2xl font-bold">Settings</h1>
+            <p className="text-muted-foreground">Manage your mess settings and data</p>
+          </div>
         </div>
 
         <Tabs defaultValue="company" className="space-y-6">
-          <TabsList className="backdrop-blur-xl bg-card/80 border border-border flex-wrap h-auto">
-            <TabsTrigger value="company" className="data-[state=active]:bg-primary data-[state=active]:text-primary-foreground">
-              <Building className="h-4 w-4 mr-2" />
-              Company
+          <TabsList className="backdrop-blur-xl bg-card/80 border border-border flex-wrap h-auto p-1">
+            <TabsTrigger value="company" className="data-[state=active]:bg-primary/20 data-[state=active]:text-primary gap-2">
+              <Building2 className="h-4 w-4" />
+              <span className="hidden sm:inline">Business</span>
             </TabsTrigger>
-            <TabsTrigger value="tax" className="data-[state=active]:bg-primary data-[state=active]:text-primary-foreground">
-              <FileText className="h-4 w-4 mr-2" />
-              Tax & Legal
+            <TabsTrigger value="portals" className="data-[state=active]:bg-primary/20 data-[state=active]:text-primary gap-2">
+              <Globe className="h-4 w-4" />
+              <span className="hidden sm:inline">Portals</span>
             </TabsTrigger>
-            <TabsTrigger value="storage" className="data-[state=active]:bg-primary data-[state=active]:text-primary-foreground">
-              <Database className="h-4 w-4 mr-2" />
-              Storage
+            <TabsTrigger value="invoices" className="data-[state=active]:bg-primary/20 data-[state=active]:text-primary gap-2">
+              <Receipt className="h-4 w-4" />
+              <span className="hidden sm:inline">Billing</span>
             </TabsTrigger>
-            <TabsTrigger value="integrations" className="data-[state=active]:bg-primary data-[state=active]:text-primary-foreground">
-              <MessageSquare className="h-4 w-4 mr-2" />
-              WhatsApp
+            <TabsTrigger value="tax" className="data-[state=active]:bg-primary/20 data-[state=active]:text-primary gap-2">
+              <Percent className="h-4 w-4" />
+              <span className="hidden sm:inline">Tax</span>
+            </TabsTrigger>
+            <TabsTrigger value="storage" className="data-[state=active]:bg-primary/20 data-[state=active]:text-primary gap-2">
+              <HardDrive className="h-4 w-4" />
+              <span className="hidden sm:inline">Storage</span>
+            </TabsTrigger>
+            <TabsTrigger value="integrations" className="data-[state=active]:bg-primary/20 data-[state=active]:text-primary gap-2">
+              <Zap className="h-4 w-4" />
+              <span className="hidden sm:inline">Connect</span>
             </TabsTrigger>
           </TabsList>
 
+          {/* Company/Business Tab */}
           <TabsContent value="company" className="space-y-4">
-            <GlassCard>
+            <div className="grid gap-4 md:grid-cols-2">
+              <GlassCard className="md:col-span-2">
+                <GlassCardHeader>
+                  <GlassCardTitle className="text-lg flex items-center gap-3">
+                    <div className="p-2 rounded-lg bg-primary/10">
+                      <Building2 className="h-5 w-5 text-primary" />
+                    </div>
+                    Business Profile
+                  </GlassCardTitle>
+                  <GlassCardDescription>
+                    Your business identity displayed to customers
+                  </GlassCardDescription>
+                </GlassCardHeader>
+                <GlassCardContent className="space-y-6">
+                  <CompanyLogoUpload currentLogoUrl={(profile as any)?.company_logo_url} />
+                  
+                  <div className="space-y-2">
+                    <Label>Business Name</Label>
+                    <Input
+                      value={profile?.business_name || ''}
+                      disabled
+                      className="bg-muted/50"
+                    />
+                    <p className="text-xs text-muted-foreground flex items-center gap-1">
+                      <Info className="h-3 w-3" />
+                      Business name cannot be changed after signup
+                    </p>
+                  </div>
+
+                  <div className="space-y-2">
+                    <Label>Business Address</Label>
+                    <Textarea
+                      value={companyAddress}
+                      onChange={(e) => setCompanyAddress(e.target.value)}
+                      placeholder="Enter your business address for invoices..."
+                      rows={3}
+                    />
+                  </div>
+
+                  <div className="space-y-2">
+                    <Label>Currency</Label>
+                    <Select value={currency} onValueChange={(v) => setCurrency(v as CurrencyCode)}>
+                      <SelectTrigger>
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {GCC_CURRENCIES.map((curr) => (
+                          <SelectItem key={curr.code} value={curr.code}>
+                            <span className="font-medium">{curr.code}</span>
+                            <span className="text-muted-foreground ml-2">- {curr.name}</span>
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+
+                  <Button onClick={saveCompanySettings} disabled={savingCompany} className="w-full sm:w-auto">
+                    {savingCompany ? 'Saving...' : 'Save Changes'}
+                  </Button>
+                </GlassCardContent>
+              </GlassCard>
+            </div>
+          </TabsContent>
+
+          {/* Portals Tab */}
+          <TabsContent value="portals" className="space-y-4">
+            <div className="grid gap-4 md:grid-cols-2">
+              <GlassCard>
+                <GlassCardHeader>
+                  <GlassCardTitle className="text-lg flex items-center gap-3">
+                    <div className="p-2 rounded-lg bg-green-500/10">
+                      <Globe className="h-5 w-5 text-green-500" />
+                    </div>
+                    Customer Portal
+                  </GlassCardTitle>
+                  <GlassCardDescription>
+                    Share with customers to manage their subscriptions
+                  </GlassCardDescription>
+                </GlassCardHeader>
+                <GlassCardContent className="space-y-4">
+                  <div className="space-y-2">
+                    <Label className="text-sm font-medium">Registration & Portal URL</Label>
+                    <div className="flex gap-2">
+                      <Input
+                        value={customerPortalLink}
+                        readOnly
+                        className="bg-muted/50 font-mono text-sm"
+                        placeholder="Loading..."
+                      />
+                      <Button onClick={handleCopyCustomerLink} variant="outline" size="icon">
+                        {copiedCustomerLink ? <Check className="h-4 w-4 text-green-500" /> : <Copy className="h-4 w-4" />}
+                      </Button>
+                    </div>
+                  </div>
+                  <div className="p-3 bg-muted/30 rounded-lg space-y-2">
+                    <p className="text-xs font-medium text-muted-foreground">What customers can do:</p>
+                    <ul className="text-xs text-muted-foreground space-y-1">
+                      <li className="flex items-center gap-2">
+                        <Check className="h-3 w-3 text-green-500" /> View subscription status
+                      </li>
+                      <li className="flex items-center gap-2">
+                        <Check className="h-3 w-3 text-green-500" /> Track delivery history
+                      </li>
+                      <li className="flex items-center gap-2">
+                        <Check className="h-3 w-3 text-green-500" /> Access invoices
+                      </li>
+                      <li className="flex items-center gap-2">
+                        <Check className="h-3 w-3 text-green-500" /> Pause/resume meals
+                      </li>
+                    </ul>
+                  </div>
+                </GlassCardContent>
+              </GlassCard>
+
+              <GlassCard>
+                <GlassCardHeader>
+                  <GlassCardTitle className="text-lg flex items-center gap-3">
+                    <div className="p-2 rounded-lg bg-orange-500/10">
+                      <Truck className="h-5 w-5 text-orange-500" />
+                    </div>
+                    Driver Portal
+                  </GlassCardTitle>
+                  <GlassCardDescription>
+                    Drivers access their delivery assignments
+                  </GlassCardDescription>
+                </GlassCardHeader>
+                <GlassCardContent className="space-y-4">
+                  <div className="space-y-2">
+                    <Label className="text-sm font-medium">Driver Access URL</Label>
+                    <div className="flex gap-2">
+                      <Input
+                        value={driverPortalLink}
+                        readOnly
+                        className="bg-muted/50 font-mono text-sm"
+                        placeholder="Loading..."
+                      />
+                      <Button onClick={handleCopyDriverLink} variant="outline" size="icon">
+                        {copiedDriverLink ? <Check className="h-4 w-4 text-green-500" /> : <Copy className="h-4 w-4" />}
+                      </Button>
+                    </div>
+                  </div>
+                  <div className="p-3 bg-muted/30 rounded-lg space-y-2">
+                    <p className="text-xs font-medium text-muted-foreground">How drivers use it:</p>
+                    <ol className="text-xs text-muted-foreground space-y-1 list-decimal list-inside">
+                      <li>Share link with your drivers</li>
+                      <li>Driver enters unique access code</li>
+                      <li>Access assigned deliveries</li>
+                      <li>Update delivery status</li>
+                    </ol>
+                  </div>
+                  <p className="text-xs text-muted-foreground">
+                    Get access codes from <span className="font-medium">Delivery → Drivers</span>
+                  </p>
+                </GlassCardContent>
+              </GlassCard>
+            </div>
+
+            {/* Slug-based Links Section */}
+            <GlassCard className="border-primary/20">
               <GlassCardHeader>
-                <GlassCardTitle className="text-lg flex items-center gap-2">
-                  <Building className="h-5 w-5" />
-                  Company Settings
+                <GlassCardTitle className="text-lg flex items-center gap-3">
+                  <div className="p-2 rounded-lg bg-primary/10">
+                    <Link2 className="h-5 w-5 text-primary" />
+                  </div>
+                  Owner-Scoped Portal Links
                 </GlassCardTitle>
                 <GlassCardDescription>
-                  Configure your business details for invoices and branding
+                  New URL format with your business name - more shareable and memorable
                 </GlassCardDescription>
               </GlassCardHeader>
               <GlassCardContent className="space-y-4">
-                {/* Company Logo Upload */}
-                <CompanyLogoUpload currentLogoUrl={(profile as any)?.company_logo_url} />
-
-                <div className="space-y-2">
-                  <Label htmlFor="businessName">Business Name</Label>
-                  <Input
-                    id="businessName"
-                    value={profile?.business_name || ''}
-                    disabled
-                    className="bg-muted"
-                  />
-                  <p className="text-xs text-muted-foreground">
-                    Business name cannot be changed after signup
-                  </p>
+                <div className="flex items-center gap-2 p-3 bg-muted/30 rounded-lg">
+                  <span className="text-sm font-medium">Your slug:</span>
+                  <code className="px-2 py-1 bg-primary/10 rounded text-sm font-mono">{slug}</code>
+                  <Button variant="ghost" size="sm" className="ml-auto" onClick={() => {
+                    navigator.clipboard.writeText(slug);
+                    toast.success('Slug copied!');
+                  }}>
+                    <Copy className="h-4 w-4" />
+                  </Button>
                 </div>
 
-                <div className="space-y-2">
-                  <Label htmlFor="companyAddress">Company Address</Label>
-                  <Textarea
-                    id="companyAddress"
-                    value={companyAddress}
-                    onChange={(e) => setCompanyAddress(e.target.value)}
-                    placeholder="Enter your company address..."
-                    rows={3}
-                  />
+                <div className="grid gap-4 sm:grid-cols-2">
+                  <div className="space-y-2">
+                    <Label className="text-sm font-medium">Customer Portal (New)</Label>
+                    <div className="flex gap-2">
+                      <Input
+                        value={slugBasedCustomerLink}
+                        readOnly
+                        className="bg-muted/50 font-mono text-sm"
+                      />
+                      <Button onClick={handleCopySlugCustomerLink} variant="outline" size="icon">
+                        <Copy className="h-4 w-4" />
+                      </Button>
+                    </div>
+                  </div>
+                  <div className="space-y-2">
+                    <Label className="text-sm font-medium">Driver Portal (New)</Label>
+                    <div className="flex gap-2">
+                      <Input
+                        value={slugBasedDriverLink}
+                        readOnly
+                        className="bg-muted/50 font-mono text-sm"
+                      />
+                      <Button onClick={handleCopySlugDriverLink} variant="outline" size="icon">
+                        <Copy className="h-4 w-4" />
+                      </Button>
+                    </div>
+                  </div>
+                  <div className="space-y-2">
+                    <Label className="text-sm font-medium">Customer Registration Link</Label>
+                    <div className="flex gap-2">
+                      <Input
+                        value={slugBasedRegisterLink}
+                        readOnly
+                        className="bg-muted/50 font-mono text-sm"
+                      />
+                      <Button onClick={handleCopySlugRegisterLink} variant="outline" size="icon">
+                        <Copy className="h-4 w-4" />
+                      </Button>
+                    </div>
+                    <p className="text-xs text-muted-foreground">
+                      Share this link with customers to register themselves
+                    </p>
+                  </div>
                 </div>
+              </GlassCardContent>
+            </GlassCard>
 
+            {/* Sales Portal Section */}
+            <GlassCard className="border-blue-500/20">
+              <GlassCardHeader>
+                <GlassCardTitle className="text-lg flex items-center gap-3">
+                  <div className="p-2 rounded-lg bg-blue-500/10">
+                    <Users className="h-5 w-5 text-blue-500" />
+                  </div>
+                  Sales Team Portal
+                </GlassCardTitle>
+                <GlassCardDescription>
+                  Manage your sales team and their access
+                </GlassCardDescription>
+              </GlassCardHeader>
+              <GlassCardContent className="space-y-4">
                 <div className="space-y-2">
-                  <Label htmlFor="currency">Currency</Label>
-                  <Select value={currency} onValueChange={(v) => setCurrency(v as CurrencyCode)}>
-                    <SelectTrigger>
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {GCC_CURRENCIES.map((curr) => (
-                        <SelectItem key={curr.code} value={curr.code}>
-                          {curr.code} - {curr.name}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                  <p className="text-xs text-muted-foreground">
-                    This will update all price displays across the app
-                  </p>
+                  <Label className="text-sm font-medium">Sales Portal URL</Label>
+                  <div className="flex gap-2">
+                    <Input
+                      value={salesPortalLink}
+                      readOnly
+                      className="bg-muted/50 font-mono text-sm"
+                      placeholder="Sales portal link will appear here"
+                    />
+                    <Button onClick={handleCopySalesLink} variant="outline" size="icon">
+                      {copiedSalesLink ? <Check className="h-4 w-4 text-green-500" /> : <Copy className="h-4 w-4" />}
+                    </Button>
+                  </div>
                 </div>
-
-                <Button onClick={saveCompanySettings} disabled={savingCompany}>
-                  {savingCompany ? 'Saving...' : 'Save Company Settings'}
+                <div className="p-3 bg-muted/30 rounded-lg space-y-2">
+                  <p className="text-xs font-medium text-muted-foreground">Sales team access:</p>
+                  <ul className="text-xs text-muted-foreground space-y-1">
+                    <li className="flex items-center gap-2">
+                      <Check className="h-3 w-3 text-green-500" /> Add and manage their assigned customers
+                    </li>
+                    <li className="flex items-center gap-2">
+                      <Check className="h-3 w-3 text-green-500" /> Cannot delete customers directly
+                    </li>
+                    <li className="flex items-center gap-2">
+                      <Check className="h-3 w-3 text-green-500" /> Request deletion for owner approval
+                    </li>
+                  </ul>
+                </div>
+                <Button variant="outline" className="w-full" asChild>
+                  <a href={`/sales`}>
+                    <Users className="h-4 w-4 mr-2" />
+                    Manage Sales Team
+                  </a>
                 </Button>
               </GlassCardContent>
             </GlassCard>
           </TabsContent>
 
+          {/* Invoices/Billing Tab */}
+          <TabsContent value="invoices" className="space-y-4">
+            <GlassCard>
+              <GlassCardHeader>
+                <GlassCardTitle className="text-lg flex items-center gap-3">
+                  <div className="p-2 rounded-lg bg-blue-500/10">
+                    <Receipt className="h-5 w-5 text-blue-500" />
+                  </div>
+                  Invoice Configuration
+                </GlassCardTitle>
+                <GlassCardDescription>
+                  Customize how your invoices look and are numbered
+                </GlassCardDescription>
+              </GlassCardHeader>
+              <GlassCardContent className="space-y-6">
+                <div className="grid gap-4 sm:grid-cols-2">
+                  <div className="space-y-2">
+                    <Label>Invoice Prefix</Label>
+                    <Input
+                      value={invoicePrefix}
+                      onChange={(e) => setInvoicePrefix(e.target.value)}
+                      placeholder="INV"
+                      className="font-mono"
+                    />
+                    <p className="text-xs text-muted-foreground">
+                      e.g., INV-00001, BILL-00001
+                    </p>
+                  </div>
+                </div>
+                
+                <div className="space-y-2">
+                  <Label>Invoice Address</Label>
+                  <Textarea
+                    value={invoiceCompanyAddress}
+                    onChange={(e) => setInvoiceCompanyAddress(e.target.value)}
+                    placeholder="Address shown on invoices..."
+                    rows={3}
+                  />
+                </div>
+                
+                <div className="space-y-2">
+                  <Label>Footer Message</Label>
+                  <Textarea
+                    value={invoiceFooter}
+                    onChange={(e) => setInvoiceFooter(e.target.value)}
+                    placeholder="Thank you for your business! Payment within 7 days..."
+                    rows={2}
+                  />
+                </div>
+
+                <Button onClick={saveInvoiceSettings} disabled={savingInvoiceSettings}>
+                  {savingInvoiceSettings ? 'Saving...' : 'Save Invoice Settings'}
+                </Button>
+              </GlassCardContent>
+            </GlassCard>
+          </TabsContent>
+
+          {/* Tax Tab */}
           <TabsContent value="tax" className="space-y-4">
             <GlassCard>
               <GlassCardHeader>
-                <GlassCardTitle className="text-lg flex items-center gap-2">
-                  <SettingsIcon className="h-5 w-5" />
-                  Tax & Legal Settings
+                <GlassCardTitle className="text-lg flex items-center gap-3">
+                  <div className="p-2 rounded-lg bg-purple-500/10">
+                    <Percent className="h-5 w-5 text-purple-500" />
+                  </div>
+                  Tax Configuration
                 </GlassCardTitle>
                 <GlassCardDescription>
-                  Configure your VAT/Tax settings for invoices and receipts
+                  Configure VAT/GST settings for invoices and receipts
                 </GlassCardDescription>
               </GlassCardHeader>
-              <GlassCardContent className="space-y-4">
+              <GlassCardContent className="space-y-6">
                 <div className="grid gap-4 sm:grid-cols-2">
                   <div className="space-y-2">
-                    <Label htmlFor="taxName">Tax Name</Label>
+                    <Label>Tax Name</Label>
                     <Input
-                      id="taxName"
                       value={taxName}
                       onChange={(e) => setTaxName(e.target.value)}
-                      placeholder="e.g., VAT, GST"
+                      placeholder="VAT, GST, TAX"
                     />
                   </div>
                   <div className="space-y-2">
-                    <Label htmlFor="taxRate">Tax Rate (%)</Label>
+                    <Label>Tax Rate (%)</Label>
                     <Input
-                      id="taxRate"
                       type="number"
                       step="0.01"
                       value={taxRate}
@@ -330,15 +765,14 @@ export default function Settings() {
                   </div>
                 </div>
                 <div className="space-y-2">
-                  <Label htmlFor="taxTrn">Tax Registration Number (TRN)</Label>
+                  <Label>Tax Registration Number</Label>
                   <Input
-                    id="taxTrn"
                     value={taxTrn}
                     onChange={(e) => setTaxTrn(e.target.value)}
                     placeholder="e.g., 100123456789003"
                   />
                   <p className="text-xs text-muted-foreground">
-                    This will appear on all generated invoices
+                    Appears on all generated invoices
                   </p>
                 </div>
                 <Button onClick={saveTaxSettings} disabled={saving}>
@@ -348,85 +782,93 @@ export default function Settings() {
             </GlassCard>
           </TabsContent>
 
+          {/* Storage Tab */}
           <TabsContent value="storage" className="space-y-4">
-            {/* Storage Usage Card */}
-            <GlassCard>
-              <GlassCardHeader>
-                <GlassCardTitle className="text-lg flex items-center gap-2">
-                  <HardDrive className="h-5 w-5" />
-                  Storage Usage
-                </GlassCardTitle>
-              </GlassCardHeader>
-              <GlassCardContent className="space-y-4">
-                <div className="space-y-2">
-                  <div className="flex justify-between text-sm">
-                    <span>{formatBytes(storageUsed)} used</span>
-                    <span>{formatBytes(storageLimit)} limit</span>
+            <div className="grid gap-4 md:grid-cols-2">
+              <GlassCard>
+                <GlassCardHeader>
+                  <GlassCardTitle className="text-lg flex items-center gap-3">
+                    <div className="p-2 rounded-lg bg-cyan-500/10">
+                      <HardDrive className="h-5 w-5 text-cyan-500" />
+                    </div>
+                    Storage Overview
+                  </GlassCardTitle>
+                </GlassCardHeader>
+                <GlassCardContent className="space-y-4">
+                  <div className="space-y-3">
+                    <div className="flex justify-between items-center">
+                      <span className="text-sm text-muted-foreground">Used</span>
+                      <span className="font-medium">{formatBytes(storageUsed)}</span>
+                    </div>
+                    <div className="flex justify-between items-center">
+                      <span className="text-sm text-muted-foreground">Available</span>
+                      <span className="font-medium">{formatBytes(storageLimit)}</span>
+                    </div>
+                    <div className="h-4 bg-muted rounded-full overflow-hidden">
+                      <div 
+                        className={`h-full transition-all ${
+                          storagePercentage > 90 ? 'bg-destructive' : 
+                          storagePercentage > 70 ? 'bg-yellow-500' : 'bg-primary'
+                        }`}
+                        style={{ width: `${Math.min(storagePercentage, 100)}%` }}
+                      />
+                    </div>
+                    <p className="text-xs text-center text-muted-foreground">
+                      {storagePercentage.toFixed(1)}% used
+                    </p>
                   </div>
-                  <div className="h-3 bg-muted rounded-full overflow-hidden">
-                    <div 
-                      className={`h-full transition-all ${
-                        storagePercentage > 90 ? 'bg-destructive' : 
-                        storagePercentage > 70 ? 'bg-accent-foreground' : 'bg-primary'
-                      }`}
-                      style={{ width: `${Math.min(storagePercentage, 100)}%` }}
-                    />
-                  </div>
-                  <p className="text-xs text-muted-foreground">
-                    {storagePercentage.toFixed(1)}% of storage used
-                  </p>
-                </div>
-              </GlassCardContent>
-            </GlassCard>
+                </GlassCardContent>
+              </GlassCard>
 
-            {/* Smart Audit Download */}
-            <GlassCard>
+              <GlassCard>
+                <GlassCardHeader>
+                  <GlassCardTitle className="text-lg flex items-center gap-3">
+                    <div className="p-2 rounded-lg bg-indigo-500/10">
+                      <BarChart3 className="h-5 w-5 text-indigo-500" />
+                    </div>
+                    Export Data
+                  </GlassCardTitle>
+                  <GlassCardDescription>
+                    Download your expense reports
+                  </GlassCardDescription>
+                </GlassCardHeader>
+                <GlassCardContent className="space-y-4">
+                  <div className="grid grid-cols-2 gap-3">
+                    <div className="space-y-2">
+                      <Label className="text-xs">From</Label>
+                      <Input
+                        type="date"
+                        value={reportFromDate}
+                        onChange={(e) => setReportFromDate(e.target.value)}
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label className="text-xs">To</Label>
+                      <Input
+                        type="date"
+                        value={reportToDate}
+                        onChange={(e) => setReportToDate(e.target.value)}
+                      />
+                    </div>
+                  </div>
+                  <Button onClick={handleGenerateReport} disabled={generatingReport} className="w-full">
+                    <Download className="h-4 w-4 mr-2" />
+                    {generatingReport ? 'Generating...' : 'Download Report'}
+                  </Button>
+                </GlassCardContent>
+              </GlassCard>
+            </div>
+
+            <GlassCard className="border-destructive/20">
               <GlassCardHeader>
-                <GlassCardTitle className="text-lg flex items-center gap-2">
-                  <Download className="h-5 w-5" />
-                  Smart Audit Report
+                <GlassCardTitle className="text-lg flex items-center gap-3 text-destructive">
+                  <div className="p-2 rounded-lg bg-destructive/10">
+                    <Trash2 className="h-5 w-5" />
+                  </div>
+                  Cleanup
                 </GlassCardTitle>
                 <GlassCardDescription>
-                  Download a comprehensive expense report with all receipts
-                </GlassCardDescription>
-              </GlassCardHeader>
-              <GlassCardContent className="space-y-4">
-                <div className="grid gap-4 sm:grid-cols-2">
-                  <div className="space-y-2">
-                    <Label htmlFor="fromDate">From Date</Label>
-                    <Input
-                      id="fromDate"
-                      type="date"
-                      value={reportFromDate}
-                      onChange={(e) => setReportFromDate(e.target.value)}
-                    />
-                  </div>
-                  <div className="space-y-2">
-                    <Label htmlFor="toDate">To Date</Label>
-                    <Input
-                      id="toDate"
-                      type="date"
-                      value={reportToDate}
-                      onChange={(e) => setReportToDate(e.target.value)}
-                    />
-                  </div>
-                </div>
-                <Button onClick={handleGenerateReport} disabled={generatingReport}>
-                  <Download className="h-4 w-4 mr-2" />
-                  {generatingReport ? 'Generating...' : 'Download Expense Report'}
-                </Button>
-              </GlassCardContent>
-            </GlassCard>
-
-            {/* Storage Cleanup */}
-            <GlassCard>
-              <GlassCardHeader>
-                <GlassCardTitle className="text-lg flex items-center gap-2">
-                  <Trash2 className="h-5 w-5" />
-                  Free Up Space
-                </GlassCardTitle>
-                <GlassCardDescription>
-                  Delete old receipt images to reclaim storage
+                  Permanently delete old receipt images
                 </GlassCardDescription>
               </GlassCardHeader>
               <GlassCardContent>
@@ -438,52 +880,54 @@ export default function Settings() {
             </GlassCard>
           </TabsContent>
 
+          {/* Integrations Tab */}
           <TabsContent value="integrations" className="space-y-4">
             <GlassCard>
               <GlassCardHeader>
-                <GlassCardTitle className="text-lg flex items-center gap-2">
-                  <MessageSquare className="h-5 w-5" />
-                  WhatsApp Business API
+                <GlassCardTitle className="text-lg flex items-center gap-3">
+                  <div className="p-2 rounded-lg bg-green-500/10">
+                    <MessageCircle className="h-5 w-5 text-green-500" />
+                  </div>
+                  WhatsApp Business
                 </GlassCardTitle>
                 <GlassCardDescription>
-                  Configure your WhatsApp Business API for automated messaging
+                  Send automated WhatsApp messages to customers
                 </GlassCardDescription>
               </GlassCardHeader>
-              <GlassCardContent className="space-y-4">
+              <GlassCardContent className="space-y-6">
                 <div className="space-y-2">
-                  <Label htmlFor="whatsappApiKey">API Key</Label>
+                  <Label>API Key</Label>
                   <div className="relative">
                     <Input
-                      id="whatsappApiKey"
                       type={showApiKey ? 'text' : 'password'}
                       value={whatsappApiKey}
                       onChange={(e) => setWhatsappApiKey(e.target.value)}
                       placeholder="Enter your WhatsApp Business API key"
-                      className="pr-10"
+                      className="pr-12"
                     />
                     <Button
                       type="button"
                       variant="ghost"
                       size="icon"
-                      className="absolute right-0 top-0 h-full"
+                      className="absolute right-1 top-1/2 -translate-y-1/2 h-8 w-8"
                       onClick={() => setShowApiKey(!showApiKey)}
                     >
                       {showApiKey ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
                     </Button>
                   </div>
-                  <p className="text-xs text-muted-foreground">
-                    Your API key is stored securely and used for sending automated WhatsApp messages.
-                  </p>
                 </div>
-                <div className="p-3 bg-muted/50 rounded-lg">
-                  <p className="text-sm font-medium mb-1">How to get your API key:</p>
-                  <ol className="text-xs text-muted-foreground space-y-1 list-decimal list-inside">
-                    <li>Sign up for WhatsApp Business API (via Meta Business Suite or a provider like Twilio, MessageBird)</li>
+
+                <div className="p-4 bg-muted/30 rounded-lg space-y-3">
+                  <p className="text-sm font-medium">Setup Instructions:</p>
+                  <ol className="text-sm text-muted-foreground space-y-2 list-decimal list-inside">
+                    <li>Sign up for WhatsApp Business API (Meta Business Suite or provider)</li>
                     <li>Create an application and generate an API key</li>
                     <li>Copy and paste the key above</li>
+                    <li>Save settings to enable messaging</li>
                   </ol>
                 </div>
-                <Button onClick={saveWhatsappSettings} disabled={savingWhatsapp}>
+
+                <Button onClick={saveWhatsappSettings} disabled={savingWhatsapp} className="w-full sm:w-auto">
                   {savingWhatsapp ? 'Saving...' : 'Save WhatsApp Settings'}
                 </Button>
               </GlassCardContent>
@@ -495,8 +939,8 @@ export default function Settings() {
         <Dialog open={cleanupOpen} onOpenChange={setCleanupOpen}>
           <DialogContent>
             <DialogHeader>
-              <DialogTitle className="flex items-center gap-2">
-                <AlertTriangle className="h-5 w-5 text-destructive" />
+              <DialogTitle className="flex items-center gap-2 text-destructive">
+                <AlertTriangle className="h-5 w-5" />
                 Delete Old Receipts
               </DialogTitle>
               <DialogDescription>
@@ -505,17 +949,17 @@ export default function Settings() {
             </DialogHeader>
             <div className="space-y-4">
               <div className="p-4 bg-destructive/10 border border-destructive/20 rounded-lg">
-                <p className="text-sm text-destructive font-medium">
-                  ⚠️ Warning: Ensure you have downloaded the Smart Audit Report first!
+                <p className="text-sm text-destructive font-medium flex items-center gap-2">
+                  <AlertTriangle className="h-4 w-4" />
+                  Warning
                 </p>
                 <p className="text-xs text-muted-foreground mt-1">
-                  Deleted receipts cannot be recovered.
+                  Deleted receipts cannot be recovered. Download your audit report first!
                 </p>
               </div>
               <div className="space-y-2">
-                <Label htmlFor="cleanupDate">Delete receipts older than</Label>
+                <Label>Delete receipts older than</Label>
                 <Input
-                  id="cleanupDate"
                   type="date"
                   value={cleanupDate}
                   onChange={(e) => setCleanupDate(e.target.value)}

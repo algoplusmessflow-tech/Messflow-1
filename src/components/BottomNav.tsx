@@ -1,4 +1,4 @@
-import { Home, Users, UtensilsCrossed, Receipt, Settings, MoreHorizontal, UserCog, LogOut, Package, CreditCard, FileBarChart } from 'lucide-react';
+import { Home, Users, UtensilsCrossed, Receipt, Settings, MoreHorizontal, UserCog, LogOut, Package, CreditCard, FileBarChart, Truck, FileText, UserPlus, ChefHat, Gift, MapPin } from 'lucide-react';
 import { NavLink, useNavigate } from 'react-router-dom';
 import { cn } from '@/lib/utils';
 import { useAuth } from '@/lib/auth';
@@ -20,7 +20,13 @@ const mainNavItems = [
 const moreNavItems = [
   { to: '/inventory', icon: Package, label: 'Inventory' },
   { to: '/staff', icon: UserCog, label: 'Staff' },
+  { to: '/delivery', icon: Truck, label: 'Delivery' },
+  { to: '/zones', icon: MapPin, label: 'Zones' },
+  { to: '/kitchen-prep', icon: ChefHat, label: 'Kitchen Prep' },
+  { to: '/invoices', icon: FileText, label: 'Invoices' },
   { to: '/reports', icon: FileBarChart, label: 'Reports' },
+  { to: '/sales', icon: UserPlus, label: 'Sales Team' },
+  { to: '/referrals', icon: Gift, label: 'Referrals' },
   { to: '/pricing', icon: CreditCard, label: 'Pricing' },
   { to: '/settings', icon: Settings, label: 'Settings' },
 ];

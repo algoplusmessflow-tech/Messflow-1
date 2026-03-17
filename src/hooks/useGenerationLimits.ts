@@ -1,5 +1,4 @@
 import { useMemo } from 'react';
-import { useQuery } from '@tanstack/react-query';
 import { useAuth } from '@/lib/auth';
 import { useProfile } from '@/hooks/useProfile';
 import { FREE_TIER_LIMITS } from './useFreeTierLimits';
@@ -8,7 +7,7 @@ export function useGenerationLimits() {
   const { user } = useAuth();
   const { profile } = useProfile();
   
-  const planType = (profile as any)?.plan_type || 'free';
+  const planType = profile?.plan_type || 'free';
   const isPro = planType === 'pro';
 
   // For now, we'll use localStorage to track generation counts for free users

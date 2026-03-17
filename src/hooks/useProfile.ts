@@ -2,12 +2,13 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/lib/auth';
 import { toast } from 'sonner';
+import type { Profile, ProfileUpdate } from '@/integrations/supabase/types';
 
 export function useProfile() {
   const { user } = useAuth();
   const queryClient = useQueryClient();
 
-  const { data: profile, isLoading } = useQuery({
+  const { data: profile, isLoading } = useQuery<Profile | null>({
     queryKey: ['profile', user?.id],
     queryFn: async () => {
       if (!user) return null;
@@ -53,32 +54,31 @@ export function useProfile() {
     mutationFn: async () => {
       if (!user || !profile) throw new Error('Not authenticated');
       
-      const nextNumber = ((profile as any).next_invoice_number || 1) + 1;
+      const nextNumber = (profile.next_invoice_number || 1) + 1;
       const { error } = await supabase
         .from('profiles')
         .update({ 
           next_invoice_number: nextNumber,
-          invoice_count: ((profile as any).invoice_count || 0) + 1 
-        } as any)
+          invoice_count: (profile.invoice_count || 0) + 1 
+        })
         .eq('user_id', user.id);
 
       if (error) throw error;
-      return nextNumber - 1; // Return the current number that was used
+      return nextNumber - 1;
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['profile'] });
     },
   });
 
-  // Legacy incrementInvoiceCount for backward compatibility
   const incrementInvoiceCount = useMutation({
     mutationFn: async () => {
       if (!user || !profile) throw new Error('Not authenticated');
       
-      const currentCount = (profile as any).invoice_count || 0;
+      const currentCount = profile.invoice_count || 0;
       const { error } = await supabase
         .from('profiles')
-        .update({ invoice_count: currentCount + 1 } as any)
+        .update({ invoice_count: currentCount + 1 })
         .eq('user_id', user.id);
 
       if (error) throw error;
@@ -89,12 +89,12 @@ export function useProfile() {
   });
 
   const updateProfile = useMutation({
-    mutationFn: async (updates: Partial<typeof profile>) => {
+    mutationFn: async (updates: Partial<Profile>) => {
       if (!user) throw new Error('Not authenticated');
       
       const { error } = await supabase
         .from('profiles')
-        .update(updates as any)
+        .update(updates as ProfileUpdate)
         .eq('user_id', user.id);
 
       if (error) throw error;
@@ -116,6 +116,6 @@ export function useProfile() {
     incrementInvoiceNumber,
     incrementInvoiceCount,
     hasProfile: !!profile,
-    getNextInvoiceNumber: () => (profile as any)?.next_invoice_number || 1,
+    getNextInvoiceNumber: () => profile?.next_invoice_number || 1,
   };
 }

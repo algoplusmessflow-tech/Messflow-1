@@ -4,6 +4,7 @@ import { useAuth } from '@/lib/auth';
 import { toast } from 'sonner';
 import { useEffect } from 'react';
 import { startOfMonth, endOfMonth, format } from 'date-fns';
+import type { StaffUpdate } from '@/integrations/supabase/types';
 
 export type StaffRole = 'cook' | 'cleaner' | 'helper' | 'manager' | 'delivery' | 'other';
 export type AttendanceStatus = 'present' | 'absent' | 'half_day';
@@ -230,7 +231,7 @@ export function useStaff() {
     mutationFn: async (id: string) => {
       const { error } = await supabase
         .from('staff')
-        .update({ is_active: false } as any)
+        .update({ is_active: false } as StaffUpdate)
         .eq('id', id);
       if (error) throw error;
     },
@@ -248,7 +249,7 @@ export function useStaff() {
     mutationFn: async (id: string) => {
       const { error } = await supabase
         .from('staff')
-        .update({ is_active: true } as any)
+        .update({ is_active: true } as StaffUpdate)
         .eq('id', id);
       if (error) throw error;
     },

@@ -4,7 +4,7 @@ import { CurrencyCode, formatCurrencyWithCode } from '@/lib/currencies';
 export function useCurrency() {
   const { profile } = useProfile();
   
-  const currency = ((profile as any)?.currency || 'AED') as CurrencyCode;
+  const currency = (profile?.currency || 'AED') as CurrencyCode;
 
   const formatAmount = (amount: number): string => {
     return formatCurrencyWithCode(amount, currency);

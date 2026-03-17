@@ -1,4 +1,12 @@
-export const PLANS = [
+export interface Plan {
+    name: string;
+    price: number;
+    features: string[];
+    popular?: boolean;
+    limitations?: string[];
+}
+
+export const PLANS: Plan[] = [
     {
         name: 'Free',
         price: 0,
@@ -13,11 +21,11 @@ export const PLANS = [
             'Limited storage',
             'Basic support',
         ],
+        popular: false,
     },
     {
         name: 'Professional',
         price: 199,
-        popular: true,
         features: [
             'Unlimited members',
             'Unlimited receipt uploads',
@@ -27,6 +35,7 @@ export const PLANS = [
             'Priority support',
             'Expense reports',
         ],
+        popular: true,
     },
     {
         name: 'Enterprise',
@@ -39,5 +48,6 @@ export const PLANS = [
             'Dedicated support',
             'White-label option',
         ],
+        popular: false,
     },
 ];

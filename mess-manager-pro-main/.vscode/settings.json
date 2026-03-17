@@ -1,0 +1,13 @@
+{
+  "cSpell.words": [
+    "apikey",
+    "SUPABASE",
+    "GDRIVE",
+    "supabase",
+    "PGRST"
+  ],
+  "typescript.preferences.includePackageJsonAutoImports": "off",
+  "deno.enable": true,
+  "deno.lint": true,
+  "deno.unstable": true
+}

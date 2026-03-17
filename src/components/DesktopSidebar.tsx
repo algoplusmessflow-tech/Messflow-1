@@ -1,4 +1,4 @@
-import { Home, Users, UtensilsCrossed, Package, LogOut, Receipt, UserCog, Settings, CreditCard, FileBarChart } from 'lucide-react';
+import { Home, Users, UtensilsCrossed, Package, LogOut, Receipt, UserCog, Settings, CreditCard, FileBarChart, Truck, FileText, UserPlus, ChefHat, Gift, MapPin } from 'lucide-react';
 import { NavLink, useNavigate } from 'react-router-dom';
 import { cn } from '@/lib/utils';
 import { useAuth } from '@/lib/auth';
@@ -15,7 +15,13 @@ const navItems = [
   { to: '/menu', icon: UtensilsCrossed, label: 'Menu' },
   { to: '/inventory', icon: Package, label: 'Inventory' },
   { to: '/expenses', icon: Receipt, label: 'Expenses' },
+  { to: '/delivery', icon: Truck, label: 'Delivery' },
+  { to: '/zones', icon: MapPin, label: 'Zones' },
+  { to: '/kitchen-prep', icon: ChefHat, label: 'Kitchen Prep' },
+  { to: '/invoices', icon: FileText, label: 'Invoices' },
   { to: '/reports', icon: FileBarChart, label: 'Reports' },
+  { to: '/sales', icon: UserPlus, label: 'Sales Team' },
+  { to: '/referrals', icon: Gift, label: 'Referrals' },
   { to: '/pricing', icon: CreditCard, label: 'Pricing' },
   { to: '/settings', icon: Settings, label: 'Settings' },
 ];
@@ -32,7 +38,7 @@ export function DesktopSidebar() {
 
   return (
     <aside className="hidden md:flex md:flex-col md:w-64 md:fixed md:inset-y-0 bg-sidebar-background backdrop-blur-xl border-r border-sidebar-border shadow-glass">
-      <div className="flex flex-col flex-1 pt-6 pb-4">
+      <div className="flex flex-col flex-1 pt-6 pb-4 overflow-y-auto">
         <div className="px-4 mb-8 flex items-center justify-between">
           <div className="flex flex-col items-center">
             <Logo className="h-12 w-auto" showText={true} textClassName="text-lg font-bold text-foreground mt-1" />
@@ -48,7 +54,7 @@ export function DesktopSidebar() {
           </div>
         </div>
 
-        <nav className="flex-1 px-2 space-y-1">
+        <nav className="flex-1 px-2 space-y-1 overflow-y-auto">
           {navItems.map((item) => (
             <NavLink
               key={item.to}
