@@ -48,7 +48,7 @@ type BatchDelivery = {
 };
 
 export default function DriverPortal() {
-  const { ownerId } = useParams();
+  const { ownerId, slug } = useParams();
   const navigate = useNavigate();
   
   const [accessCode, setAccessCode] = useState('');
@@ -59,10 +59,23 @@ export default function DriverPortal() {
   const [selectedBatch, setSelectedBatch] = useState<string | null>(null);
   const [deliveries, setDeliveries] = useState<BatchDelivery[]>([]);
   const [deliveriesLoading, setDeliveriesLoading] = useState(false);
+  const [resolvedOwnerId, setResolvedOwnerId] = useState<string | null>(ownerId || null);
+
+  // Resolve slug to owner ID
+  useEffect(() => {
+    if (ownerId) { setResolvedOwnerId(ownerId); return; }
+    if (!slug) return;
+    const resolve = async () => {
+      let result = await supabase.from('profiles').select('user_id').eq('business_slug', slug).maybeSingle();
+      if (!result.data) result = await supabase.from('profiles').select('user_id').eq('user_id', slug).maybeSingle();
+      if (result.data) setResolvedOwnerId(result.data.user_id);
+    };
+    resolve();
+  }, [ownerId, slug]);
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!accessCode || !ownerId) {
+    if (!accessCode || !resolvedOwnerId) {
       toast.error('Please enter your access code');
       return;
     }
@@ -72,7 +85,7 @@ export default function DriverPortal() {
       const { data, error } = await supabase
         .from('drivers')
         .select('*')
-        .eq('owner_id', ownerId)
+        .eq('owner_id', resolvedOwnerId)
         .eq('access_code', accessCode)
         .eq('status', 'active')
         .single();
