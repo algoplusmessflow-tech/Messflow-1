@@ -41,6 +41,8 @@ import DriverPortal from "./pages/DriverPortal";
 import CustomerPortal from "./pages/CustomerPortal";
 import SalesPortal from "./pages/SalesPortal";
 import KitchenPrep from "./pages/KitchenPrep";
+import KitchenPortal from "./pages/KitchenPortal";
+import GoogleCallback from "./pages/GoogleCallback";
 import Referrals from "./pages/Referrals";
 
 const queryClient = new QueryClient();
@@ -247,6 +249,8 @@ const App = () => (
               <Route path="/:slug/driver" element={<DriverPortal />} />
               <Route path="/:slug/register" element={<CustomerPortal />} />
               <Route path="/:slug/sales/:token" element={<SalesPortal />} />
+              <Route path="/:slug/kitchen" element={<KitchenPortal />} />
+              <Route path="/auth/google/callback" element={<GoogleCallback />} />
               <Route path="*" element={<NotFound />} />
             </Routes>
           </Suspense>

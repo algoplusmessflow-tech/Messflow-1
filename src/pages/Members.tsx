@@ -41,11 +41,14 @@ import { useMembers } from '@/hooks/useMembers';
 import { useTransactions } from '@/hooks/useTransactions';
 import { useAuth } from '@/lib/auth';
 import { useProfile } from '@/hooks/useProfile';
+import { useMapConfig } from '@/hooks/useMapConfig';
+import { fetchLocationFromAddress, extractCoordinatesFromInput } from '@/lib/geolocation';
 import { useFreeTierLimits } from '@/hooks/useFreeTierLimits';
 import { formatCurrency, formatDate, toDateInputValue, calculateExpiryDate, getDaysUntilExpiry } from '@/lib/format';
 import { generateMemberInvoice } from '@/lib/pdf-generator';
 import { shareInvoiceViaWhatsApp, createInvoicePDF } from '@/lib/whatsapp-pdf-share';
-import { Plus, Phone, Loader2, CreditCard, AlertTriangle, FileText, MessageCircle, Trash2, Search, Filter, X, Calendar as CalendarIcon, RefreshCw, History, Send, Crown, Upload, Share2, Pencil, UserPlus, MapPin, UtensilsCrossed, Pause, SkipForward } from 'lucide-react';
+import { generatePortalCredentials } from '@/lib/credentials';
+import { Plus, Phone, Loader2, CreditCard, AlertTriangle, FileText, MessageCircle, Trash2, Search, Filter, X, Calendar as CalendarIcon, RefreshCw, History, Send, Crown, Upload, Share2, Pencil, UserPlus, MapPin, UtensilsCrossed, Pause, SkipForward, KeyRound, Copy, Eye, EyeOff } from 'lucide-react';
 import { toast } from 'sonner';
 import type { Database } from '@/integrations/supabase/types';
 import { UpgradePlanModal } from '@/components/UpgradePlanModal';
@@ -61,7 +64,10 @@ type MemberStatus = Database['public']['Enums']['member_status'];
 
 export default function Members() {
   const { user } = useAuth();
+  const mapConfig = useMapConfig();
   const { members, isLoading, addMember, updateMember, deleteMember } = useMembers();
+  const [isFetchingLocation, setIsFetchingLocation] = useState(false);
+  const [locationError, setLocationError] = useState('');
   const { addTransaction, getMemberTransactions } = useTransactions();
   const { profile, incrementInvoiceNumber, getNextInvoiceNumber } = useProfile();
   const freeTierLimits = useFreeTierLimits();
@@ -101,6 +107,9 @@ export default function Members() {
     pause_service: false,
     skip_weekends: false,
     free_trial: false,
+    trial_days: 3,
+    location_lat: null as number | null,
+    location_lng: null as number | null,
   });
   const [paymentAmount, setPaymentAmount] = useState('');
   const [paymentDate, setPaymentDate] = useState<Date | null>(new Date());
@@ -167,7 +176,19 @@ export default function Members() {
     pause_service: false,
     skip_weekends: false,
     free_trial: false,
+    trial_days: 3,
+    location_lat: null as number | null,
+    location_lng: null as number | null,
   });
+
+  const defaultMealOptions = [
+    { value: 'lunch', label: 'Lunch' },
+    { value: 'dinner', label: 'Dinner' },
+    { value: 'both', label: 'Both (Lunch + Dinner)' },
+    { value: 'breakfast', label: 'Breakfast' },
+    { value: 'breakfast_lunch', label: 'Breakfast + Lunch' },
+    { value: 'all_three', label: 'All Three Meals' },
+  ];
 
   // Filtered members
   const filteredMembers = useMemo(() => {
@@ -209,6 +230,9 @@ export default function Members() {
     const monthlyFee = Number(formData.monthly_fee);
     const balance = formData.isPaid ? 0 : monthlyFee;
 
+    // Generate portal credentials for customer login
+    const creds = generatePortalCredentials(formData.name);
+
     const newMember = await addMember.mutateAsync({
       name: formData.name.trim(),
       phone: formData.phone.trim(),
@@ -228,6 +252,11 @@ export default function Members() {
       pause_service: formData.pause_service,
       skip_weekends: formData.skip_weekends,
       free_trial: formData.free_trial,
+      trial_days: formData.free_trial ? formData.trial_days : null,
+      location_lat: formData.location_lat,
+      location_lng: formData.location_lng,
+      portal_username: creds.username,
+      portal_password: creds.password,
     } as any);
 
     if (formData.isPaid && newMember) {
@@ -263,6 +292,9 @@ export default function Members() {
       pause_service: false,
       skip_weekends: false,
       free_trial: false,
+      trial_days: 3,
+      location_lat: null,
+      location_lng: null,
     });
     setIsAddOpen(false);
   };
@@ -534,6 +566,9 @@ Thank you for your prompt attention! \u{1F64F}`;
       pause_service: m.pause_service || false,
       skip_weekends: m.skip_weekends || false,
       free_trial: m.free_trial || false,
+      trial_days: m.trial_days || 3,
+      location_lat: m.location_lat || null,
+      location_lng: m.location_lng || null,
     });
     setIsEditOpen(true);
   };
@@ -562,6 +597,9 @@ Thank you for your prompt attention! \u{1F64F}`;
       pause_service: editFormData.pause_service,
       skip_weekends: editFormData.skip_weekends,
       free_trial: editFormData.free_trial,
+      trial_days: editFormData.free_trial ? editFormData.trial_days : null,
+      location_lat: editFormData.location_lat,
+      location_lng: editFormData.location_lng,
     } as any);
 
     setIsEditOpen(false);
@@ -588,24 +626,60 @@ Thank you for your prompt attention! \u{1F64F}`;
     return Math.max(0, Number(selectedMember.balance) - amount);
   };
 
-  // Inline add handlers for zones and rice types
-  const handleAddZone = async (name: string): Promise<string | null> => {
+  // Location fetch handler
+  const handleFetchLocation = async (address: string, target: 'add' | 'edit') => {
+    if (!address.trim()) {
+      setLocationError('Please enter an address first');
+      return;
+    }
+    setIsFetchingLocation(true);
+    setLocationError('');
     try {
-      const { data, error } = await supabase
-        .from('delivery_areas')
-        .insert({ owner_id: user?.id || '', name })
-        .select()
-        .single();
-      if (error) throw error;
-      setDeliveryAreas((prev) => [...prev, { id: data.id, name: data.name }].sort((a, b) => a.name.localeCompare(b.name)));
-      toast.success(`Zone "${name}" created!`);
-      return data.id;
-    } catch (err: any) {
-      toast.error('Failed to create zone: ' + err.message);
-      return null;
+      // First check if it's a map link with coordinates
+      const parsed = extractCoordinatesFromInput(address);
+      if (parsed?.lat && parsed?.lng) {
+        const fullAddress = parsed.address || address;
+        if (target === 'add') {
+          setFormData((prev) => ({ ...prev, address: fullAddress }));
+        } else {
+          setEditFormData((prev) => ({ ...prev, address: fullAddress }));
+        }
+        toast.success('Location found from link!');
+        return;
+      }
+
+      // Use geocoding API with configured provider
+      const providerName = mapConfig.provider === 'google' ? 'Google Maps'
+        : mapConfig.provider === 'mapbox' ? 'Mapbox'
+        : mapConfig.provider === 'here' ? 'HERE'
+        : mapConfig.provider === 'locationiq' ? 'LocationIQ'
+        : 'OpenStreetMap';
+
+      const result = await fetchLocationFromAddress(address, mapConfig);
+      if (result.lat && result.lng) {
+        if (target === 'add') {
+          setFormData((prev) => ({ ...prev, address: result.address || prev.address, location_lat: result.lat!, location_lng: result.lng! }));
+        } else {
+          setEditFormData((prev) => ({ ...prev, address: result.address || prev.address, location_lat: result.lat!, location_lng: result.lng! }));
+        }
+        toast.success(`Address verified via ${providerName}`);
+      } else {
+        setLocationError(`Could not geocode via ${providerName}. Try a more specific address.`);
+      }
+    } catch (err) {
+      console.error('Location fetch error:', err);
+      const provider = mapConfig.provider || 'openstreetmap';
+      if (provider !== 'openstreetmap' && !mapConfig.apiKey) {
+        setLocationError(`No API key set for ${provider}. Go to Settings > Integrations to add one.`);
+      } else {
+        setLocationError('Location lookup failed. Try a different address or check your API key.');
+      }
+    } finally {
+      setIsFetchingLocation(false);
     }
   };
 
+  // Inline add handlers for rice types
   const handleAddRiceOption = async (name: string): Promise<string | null> => {
     try {
       const value = name.toLowerCase().replace(/\s+/g, '_');
@@ -752,23 +826,43 @@ Thank you for your prompt attention! \u{1F64F}`;
                   {/* Address & Delivery Area */}
                   <div className="space-y-2">
                     <Label htmlFor="address">Address</Label>
-                    <Input
-                      id="address"
-                      value={formData.address}
-                      onChange={(e) => setFormData({ ...formData, address: e.target.value })}
-                      placeholder="Delivery address"
-                    />
+                    <div className="flex gap-1">
+                      <Input
+                        id="address"
+                        value={formData.address}
+                        onChange={(e) => { setFormData({ ...formData, address: e.target.value }); setLocationError(''); }}
+                        placeholder="Enter address or paste Google Maps link"
+                        className="flex-1"
+                      />
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="icon"
+                        className="h-9 w-9 flex-shrink-0"
+                        onClick={() => handleFetchLocation(formData.address, 'add')}
+                        disabled={isFetchingLocation || !formData.address.trim()}
+                        title="Verify address"
+                      >
+                        {isFetchingLocation ? <Loader2 className="h-4 w-4 animate-spin" /> : <MapPin className="h-4 w-4" />}
+                      </Button>
+                    </div>
+                    {locationError && <p className="text-xs text-destructive">{locationError}</p>}
                   </div>
                   <div className="space-y-2">
-                    <Label>Delivery Area / Zone</Label>
-                    <InlineAddSelect
+                    <Label>Delivery Zone</Label>
+                    <Select
                       value={formData.delivery_area_id}
                       onValueChange={(value) => setFormData({ ...formData, delivery_area_id: value })}
-                      options={deliveryAreas.map((a) => ({ value: a.id, label: a.name }))}
-                      placeholder="Select delivery area"
-                      onAdd={handleAddZone}
-                      addLabel="Add new zone"
-                    />
+                    >
+                      <SelectTrigger>
+                        <SelectValue placeholder="Select zone" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {deliveryAreas.map((area) => (
+                          <SelectItem key={area.id} value={area.id}>{area.name}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
                   </div>
 
                   {/* Food Preferences */}
@@ -781,9 +875,9 @@ Thank you for your prompt attention! \u{1F64F}`;
                       >
                         <SelectTrigger><SelectValue /></SelectTrigger>
                         <SelectContent>
-                          <SelectItem value="lunch">Lunch</SelectItem>
-                          <SelectItem value="dinner">Dinner</SelectItem>
-                          <SelectItem value="both">Both</SelectItem>
+                          {defaultMealOptions.map((opt) => (
+                            <SelectItem key={opt.value} value={opt.value}>{opt.label}</SelectItem>
+                          ))}
                         </SelectContent>
                       </Select>
                     </div>
@@ -839,30 +933,67 @@ Thank you for your prompt attention! \u{1F64F}`;
                   </div>
 
                   {/* Service Toggles */}
-                  <div className="grid grid-cols-2 gap-3">
-                    <div className="flex items-center justify-between p-3 rounded-lg border bg-muted/30">
-                      <Label htmlFor="pause-toggle" className="text-sm cursor-pointer">Pause Service</Label>
-                      <Switch
-                        id="pause-toggle"
-                        checked={formData.pause_service}
-                        onCheckedChange={(checked) => setFormData({ ...formData, pause_service: checked })}
-                      />
+                  <div className="space-y-3">
+                    <div className="grid grid-cols-2 gap-3">
+                      <div className="flex items-center justify-between p-3 rounded-lg border bg-muted/30">
+                        <div>
+                          <Label htmlFor="pause-toggle" className="text-sm cursor-pointer">Pause Service</Label>
+                          <p className="text-[10px] text-muted-foreground">Temporarily stop deliveries</p>
+                        </div>
+                        <Switch
+                          id="pause-toggle"
+                          checked={formData.pause_service}
+                          onCheckedChange={(checked) => setFormData({ ...formData, pause_service: checked })}
+                        />
+                      </div>
+                      <div className="flex items-center justify-between p-3 rounded-lg border bg-muted/30">
+                        <div>
+                          <Label htmlFor="weekends-toggle" className="text-sm cursor-pointer">Skip Weekends</Label>
+                          <p className="text-[10px] text-muted-foreground">No Sat & Sun delivery</p>
+                        </div>
+                        <Switch
+                          id="weekends-toggle"
+                          checked={formData.skip_weekends}
+                          onCheckedChange={(checked) => setFormData({ ...formData, skip_weekends: checked })}
+                        />
+                      </div>
                     </div>
-                    <div className="flex items-center justify-between p-3 rounded-lg border bg-muted/30">
-                      <Label htmlFor="weekends-toggle" className="text-sm cursor-pointer">Skip Weekends</Label>
-                      <Switch
-                        id="weekends-toggle"
-                        checked={formData.skip_weekends}
-                        onCheckedChange={(checked) => setFormData({ ...formData, skip_weekends: checked })}
-                      />
-                    </div>
-                    <div className="flex items-center justify-between p-3 rounded-lg border bg-muted/30">
-                      <Label htmlFor="trial-toggle" className="text-sm cursor-pointer">Free Trial</Label>
-                      <Switch
-                        id="trial-toggle"
-                        checked={formData.free_trial}
-                        onCheckedChange={(checked) => setFormData({ ...formData, free_trial: checked })}
-                      />
+                    <div className={`p-3 rounded-lg border ${formData.free_trial ? 'border-green-500 bg-green-500/5' : 'bg-muted/30'}`}>
+                      <div className="flex items-center justify-between">
+                        <div>
+                          <Label htmlFor="trial-toggle" className="text-sm cursor-pointer">Free Trial</Label>
+                          <p className="text-[10px] text-muted-foreground">
+                            {formData.free_trial ? `${formData.trial_days}-day free trial period` : 'No charge during trial'}
+                          </p>
+                        </div>
+                        <Switch
+                          id="trial-toggle"
+                          checked={formData.free_trial}
+                          onCheckedChange={(checked) => setFormData({ ...formData, free_trial: checked, isPaid: checked ? true : formData.isPaid })}
+                          disabled={formData.isPaid && !formData.free_trial}
+                        />
+                      </div>
+                      {formData.free_trial && (
+                        <div className="mt-3 flex items-center gap-2">
+                          <Label className="text-xs text-muted-foreground whitespace-nowrap">Trial Duration:</Label>
+                          <Select
+                            value={String(formData.trial_days)}
+                            onValueChange={(v) => setFormData({ ...formData, trial_days: parseInt(v) })}
+                          >
+                            <SelectTrigger className="h-8 w-28">
+                              <SelectValue />
+                            </SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="1">1 day</SelectItem>
+                              <SelectItem value="3">3 days</SelectItem>
+                              <SelectItem value="5">5 days</SelectItem>
+                              <SelectItem value="7">7 days</SelectItem>
+                              <SelectItem value="14">14 days</SelectItem>
+                              <SelectItem value="30">30 days</SelectItem>
+                            </SelectContent>
+                          </Select>
+                        </div>
+                      )}
                     </div>
                   </div>
 
@@ -1068,6 +1199,20 @@ Thank you for your prompt attention! \u{1F64F}`;
                           {(member as any).free_trial && (
                             <Badge variant="outline" className="text-[10px] h-4 px-1 border-green-500 text-green-500">
                               Trial
+                            </Badge>
+                          )}
+                          {(member as any).portal_username && (
+                            <Badge
+                              variant="outline"
+                              className="text-[10px] h-4 px-1 border-blue-500 text-blue-500 cursor-pointer select-all"
+                              title={`Username: ${(member as any).portal_username} | Password: ${(member as any).portal_password}`}
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                navigator.clipboard.writeText(`Username: ${(member as any).portal_username}\nPassword: ${(member as any).portal_password}`);
+                                toast.success('Login credentials copied!');
+                              }}
+                            >
+                              <KeyRound className="h-2 w-2 mr-0.5" /> {(member as any).portal_username}
                             </Badge>
                           )}
                         </div>
@@ -1315,22 +1460,42 @@ Thank you for your prompt attention! \u{1F64F}`;
               {/* Address & Delivery Area */}
               <div className="space-y-2">
                 <Label>Address</Label>
-                <Input
-                  value={editFormData.address}
-                  onChange={(e) => setEditFormData({ ...editFormData, address: e.target.value })}
-                  placeholder="Delivery address"
-                />
+                <div className="flex gap-1">
+                  <Input
+                    value={editFormData.address}
+                    onChange={(e) => { setEditFormData({ ...editFormData, address: e.target.value }); setLocationError(''); }}
+                    placeholder="Enter address or paste Google Maps link"
+                    className="flex-1"
+                  />
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="icon"
+                    className="h-9 w-9 flex-shrink-0"
+                    onClick={() => handleFetchLocation(editFormData.address, 'edit')}
+                    disabled={isFetchingLocation || !editFormData.address.trim()}
+                    title="Verify address"
+                  >
+                    {isFetchingLocation ? <Loader2 className="h-4 w-4 animate-spin" /> : <MapPin className="h-4 w-4" />}
+                  </Button>
+                </div>
+                {locationError && <p className="text-xs text-destructive">{locationError}</p>}
               </div>
               <div className="space-y-2">
-                <Label>Delivery Area / Zone</Label>
-                <InlineAddSelect
+                <Label>Delivery Zone</Label>
+                <Select
                   value={editFormData.delivery_area_id}
                   onValueChange={(value) => setEditFormData({ ...editFormData, delivery_area_id: value })}
-                  options={deliveryAreas.map((a) => ({ value: a.id, label: a.name }))}
-                  placeholder="Select delivery area"
-                  onAdd={handleAddZone}
-                  addLabel="Add new zone"
-                />
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder="Select zone" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {deliveryAreas.map((area) => (
+                      <SelectItem key={area.id} value={area.id}>{area.name}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
               </div>
 
               {/* Food Preferences */}
@@ -1340,9 +1505,9 @@ Thank you for your prompt attention! \u{1F64F}`;
                   <Select value={editFormData.meal_type} onValueChange={(v) => setEditFormData({ ...editFormData, meal_type: v })}>
                     <SelectTrigger><SelectValue /></SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="lunch">Lunch</SelectItem>
-                      <SelectItem value="dinner">Dinner</SelectItem>
-                      <SelectItem value="both">Both</SelectItem>
+                      {defaultMealOptions.map((opt) => (
+                        <SelectItem key={opt.value} value={opt.value}>{opt.label}</SelectItem>
+                      ))}
                     </SelectContent>
                   </Select>
                 </div>
@@ -1389,18 +1554,53 @@ Thank you for your prompt attention! \u{1F64F}`;
               </div>
 
               {/* Service Toggles */}
-              <div className="grid grid-cols-2 gap-3">
-                <div className="flex items-center justify-between p-3 rounded-lg border bg-muted/30">
-                  <Label className="text-sm cursor-pointer">Pause Service</Label>
-                  <Switch checked={editFormData.pause_service} onCheckedChange={(c) => setEditFormData({ ...editFormData, pause_service: c })} />
+              <div className="space-y-3">
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="flex items-center justify-between p-3 rounded-lg border bg-muted/30">
+                    <div>
+                      <Label className="text-sm cursor-pointer">Pause Service</Label>
+                      <p className="text-[10px] text-muted-foreground">Temporarily stop deliveries</p>
+                    </div>
+                    <Switch checked={editFormData.pause_service} onCheckedChange={(c) => setEditFormData({ ...editFormData, pause_service: c })} />
+                  </div>
+                  <div className="flex items-center justify-between p-3 rounded-lg border bg-muted/30">
+                    <div>
+                      <Label className="text-sm cursor-pointer">Skip Weekends</Label>
+                      <p className="text-[10px] text-muted-foreground">No Sat & Sun delivery</p>
+                    </div>
+                    <Switch checked={editFormData.skip_weekends} onCheckedChange={(c) => setEditFormData({ ...editFormData, skip_weekends: c })} />
+                  </div>
                 </div>
-                <div className="flex items-center justify-between p-3 rounded-lg border bg-muted/30">
-                  <Label className="text-sm cursor-pointer">Skip Weekends</Label>
-                  <Switch checked={editFormData.skip_weekends} onCheckedChange={(c) => setEditFormData({ ...editFormData, skip_weekends: c })} />
-                </div>
-                <div className="flex items-center justify-between p-3 rounded-lg border bg-muted/30">
-                  <Label className="text-sm cursor-pointer">Free Trial</Label>
-                  <Switch checked={editFormData.free_trial} onCheckedChange={(c) => setEditFormData({ ...editFormData, free_trial: c })} />
+                <div className={`p-3 rounded-lg border ${editFormData.free_trial ? 'border-green-500 bg-green-500/5' : 'bg-muted/30'}`}>
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <Label className="text-sm cursor-pointer">Free Trial</Label>
+                      <p className="text-[10px] text-muted-foreground">
+                        {editFormData.free_trial ? `${editFormData.trial_days}-day trial` : 'No charge during trial'}
+                      </p>
+                    </div>
+                    <Switch
+                      checked={editFormData.free_trial}
+                      onCheckedChange={(c) => setEditFormData({ ...editFormData, free_trial: c, isPaid: c ? true : editFormData.isPaid })}
+                      disabled={editFormData.isPaid && !editFormData.free_trial}
+                    />
+                  </div>
+                  {editFormData.free_trial && (
+                    <div className="mt-3 flex items-center gap-2">
+                      <Label className="text-xs text-muted-foreground whitespace-nowrap">Trial Duration:</Label>
+                      <Select value={String(editFormData.trial_days)} onValueChange={(v) => setEditFormData({ ...editFormData, trial_days: parseInt(v) })}>
+                        <SelectTrigger className="h-8 w-28"><SelectValue /></SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="1">1 day</SelectItem>
+                          <SelectItem value="3">3 days</SelectItem>
+                          <SelectItem value="5">5 days</SelectItem>
+                          <SelectItem value="7">7 days</SelectItem>
+                          <SelectItem value="14">14 days</SelectItem>
+                          <SelectItem value="30">30 days</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+                  )}
                 </div>
               </div>
 

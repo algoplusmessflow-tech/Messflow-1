@@ -42,6 +42,9 @@ export default function CustomerPortal() {
   const isRegisterMode = location.pathname.includes('/register');
   
   const [phone, setPhone] = useState('');
+  const [loginUsername, setLoginUsername] = useState('');
+  const [loginPassword, setLoginPassword] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [customer, setCustomer] = useState<Member | null>(null);
   const [loading, setLoading] = useState(false);
@@ -67,15 +70,25 @@ export default function CustomerPortal() {
           .single();
         if (data) setBusinessName(data.business_name);
       } else if (slug) {
-        const { data } = await supabase
+        // Try slug first, then user_id fallback
+        let result = await supabase
           .from('profiles')
           .select('business_name, user_id')
           .eq('business_slug', slug)
-          .single();
-        if (data) {
-          setBusinessName(data.business_name);
+          .maybeSingle();
+
+        if (!result.data) {
+          result = await supabase
+            .from('profiles')
+            .select('business_name, user_id')
+            .eq('user_id', slug)
+            .maybeSingle();
+        }
+
+        if (result.data) {
+          setBusinessName(result.data.business_name);
           setBusinessSlug(slug);
-          setOwnerIdFromSlug(data.user_id);
+          setOwnerIdFromSlug(result.data.user_id);
         }
       }
     };
@@ -87,22 +100,39 @@ export default function CustomerPortal() {
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
     const currentOwnerId = getOwnerId();
-    if (!phone || !currentOwnerId) {
-      toast.error('Please enter your phone number');
+
+    // Support both username/password and legacy phone login
+    const hasCredentials = loginUsername.trim() && loginPassword.trim();
+    const hasPhone = phone.trim();
+
+    if (!hasCredentials && !hasPhone) {
+      toast.error('Enter your username & password, or phone number');
+      return;
+    }
+    if (!currentOwnerId) {
+      toast.error('Portal not configured');
       return;
     }
 
     setLoading(true);
     try {
-      const { data, error } = await supabase
+      let query = supabase
         .from('members')
-        .select('*, member_plans (name, price)')
-        .eq('owner_id', currentOwnerId)
-        .eq('phone', phone)
-        .single();
+        .select('*')
+        .eq('owner_id', currentOwnerId);
+
+      if (hasCredentials) {
+        query = query
+          .eq('portal_username', loginUsername.trim())
+          .eq('portal_password', loginPassword.trim());
+      } else {
+        query = query.eq('phone', phone.trim());
+      }
+
+      const { data, error } = await query.single();
 
       if (error || !data) {
-        toast.error('Customer not found with this phone number');
+        toast.error(hasCredentials ? 'Invalid username or password' : 'Customer not found with this phone number');
         return;
       }
 
@@ -259,6 +289,44 @@ export default function CustomerPortal() {
           <CardContent>
             <form onSubmit={handleLogin} className="space-y-4">
               <div className="space-y-2">
+                <Label htmlFor="username" className="text-gray-700">Username</Label>
+                <Input
+                  id="username"
+                  type="text"
+                  value={loginUsername}
+                  onChange={(e) => setLoginUsername(e.target.value)}
+                  placeholder="Your username"
+                  className="h-12 border-gray-200 focus:border-orange-400 focus:ring-orange-100"
+                  autoComplete="username"
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="password" className="text-gray-700">Password</Label>
+                <div className="relative">
+                  <Input
+                    id="password"
+                    type={showPassword ? 'text' : 'password'}
+                    value={loginPassword}
+                    onChange={(e) => setLoginPassword(e.target.value)}
+                    placeholder="Your password"
+                    className="h-12 border-gray-200 focus:border-orange-400 focus:ring-orange-100 pr-10"
+                    autoComplete="current-password"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowPassword(!showPassword)}
+                    className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
+                  >
+                    {showPassword ? '🙈' : '👁'}
+                  </button>
+                </div>
+              </div>
+              <div className="relative flex items-center gap-3 my-2">
+                <div className="flex-1 h-px bg-gray-200" />
+                <span className="text-xs text-gray-400">or login with phone</span>
+                <div className="flex-1 h-px bg-gray-200" />
+              </div>
+              <div className="space-y-2">
                 <Label htmlFor="phone" className="text-gray-700">Phone Number</Label>
                 <Input
                   id="phone"
@@ -267,14 +335,14 @@ export default function CustomerPortal() {
                   onChange={(e) => setPhone(e.target.value)}
                   placeholder="05X XXX XXXX"
                   className="h-12 border-gray-200 focus:border-orange-400 focus:ring-orange-100"
-                  required
                 />
               </div>
               <Button 
                 type="submit" 
                 className="w-full h-12 bg-orange-500 hover:bg-orange-600 text-white font-medium rounded-lg transition-colors"
+                disabled={loading}
               >
-                Login
+                {loading ? <Loader2 className="h-5 w-5 animate-spin" /> : 'Login'}
               </Button>
             </form>
             <div className="flex justify-between mt-4">

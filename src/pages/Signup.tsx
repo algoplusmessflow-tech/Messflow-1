@@ -72,6 +72,10 @@ export default function Signup() {
     const { error } = await supabase.auth.signInWithOAuth({
       provider: 'google',
       options: {
+        queryParams: {
+          access_type: 'offline',
+        },
+        scopes: 'https://www.googleapis.com/auth/drive.file https://www.googleapis.com/auth/spreadsheets',
         redirectTo: import.meta.env.VITE_APP_URL
           ? `${import.meta.env.VITE_APP_URL}/dashboard`
           : `${window.location.origin}/dashboard`,

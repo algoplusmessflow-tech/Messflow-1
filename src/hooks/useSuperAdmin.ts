@@ -604,6 +604,25 @@ export function useSuperAdmin() {
     },
   });
 
+  // Update platform API configuration (Super Admin only)
+  const updatePlatformApiConfig = useMutation({
+    mutationFn: async (config: Record<string, any>) => {
+      if (!user) throw new Error('Not authenticated');
+      const { error } = await supabase
+        .from('profiles')
+        .update({ platform_api_config: config } as any)
+        .eq('user_id', user.id);
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['current-super-admin-profile'] });
+      toast.success('API configuration saved!');
+    },
+    onError: (error) => {
+      toast.error('Failed to save API config: ' + error.message);
+    },
+  });
+
   return {
     isSuperAdmin,
     allProfiles,
@@ -627,5 +646,6 @@ export function useSuperAdmin() {
     fetchMembersForOwner,
     currentSuperAdminProfile,
     updateGatewaySettings,
+    updatePlatformApiConfig,
   };
 }

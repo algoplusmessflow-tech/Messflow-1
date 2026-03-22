@@ -4,6 +4,7 @@ import { useAuth } from '@/lib/auth';
 import { useProfile } from './useProfile';
 import { toast } from 'sonner';
 import { uploadReceipt as uploadReceiptToCloudinary } from '@/lib/cloudinary';
+import { uploadReceipt as uploadReceiptUnified } from '@/lib/upload-service';
 
 export function useStorageManager() {
   const { user } = useAuth();
@@ -11,7 +12,9 @@ export function useStorageManager() {
   const queryClient = useQueryClient();
 
   const storageUsed = profile?.storage_used || 0;
-  const storageLimit = profile?.storage_limit || 104857600; // 100MB default
+  // Force 2.5GB limit for all plans
+  const MAX_STORAGE = 2684354560; // 2.5GB in bytes
+  const storageLimit = MAX_STORAGE;
 
   const formatBytes = (bytes: number): string => {
     if (bytes === 0) return '0 Bytes';
@@ -35,24 +38,22 @@ export function useStorageManager() {
     if (!user) throw new Error('Not authenticated');
 
     try {
-      // Upload to Cloudinary
-      const result = await uploadReceiptToCloudinary(file);
+      // Use unified upload service — routes to Google Drive or Cloudinary
+      const result = await uploadReceiptUnified(file, user.id);
 
-      // Track storage usage (for UI purposes)
-      const { error: updateError } = await supabase
-        .from('profiles')
-        .update({ storage_used: storageUsed + file.size })
-        .eq('user_id', user.id);
-
-      if (updateError) {
-        console.error('Failed to update storage used:', updateError);
+      // Only track storage if using Cloudinary (Google Drive uses user's own quota)
+      if (result.provider === 'cloudinary') {
+        const { error: updateError } = await supabase
+          .from('profiles')
+          .update({ storage_used: storageUsed + result.size })
+          .eq('user_id', user.id);
+        if (updateError) console.error('Failed to update storage used:', updateError);
       }
 
       queryClient.invalidateQueries({ queryKey: ['profile'] });
-
-      return { url: result, size: file.size };
+      return { url: result.url, size: result.size };
     } catch (error: any) {
-      console.error('Cloudinary upload failed:', error);
+      console.error('Upload failed:', error);
       throw new Error('Failed to upload receipt: ' + error.message);
     }
   };

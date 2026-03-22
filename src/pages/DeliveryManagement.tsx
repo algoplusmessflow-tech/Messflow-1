@@ -204,7 +204,7 @@ const createDriverMutation = useMutation({
         .from('delivery_batches')
         .update({ driver_id: driverId, status: 'assigned', updated_at: new Date().toISOString() })
         .eq('id', batchId)
-        .select('*, area (id name), driver (id name phone)')
+        .select('*, area:delivery_areas!area_id(id, name), driver:drivers!driver_id(id, name, phone)')
         .single();
       if (error) throw error;
       return updated;
@@ -295,7 +295,6 @@ const batchPromises = areasData?.map(async (area: any) => {
       const { data: batchData, error: batchError } = await supabase
         .from('delivery_batches')
         .insert({
-          id: generateUUID(),
           owner_id: user?.id || '',
           date: date,
           area_id: area.id,
@@ -312,7 +311,6 @@ const batchPromises = areasData?.map(async (area: any) => {
           return supabase
             .from('batch_deliveries')
             .insert({
-              id: generateUUID(),
               owner_id: user?.id || '',
               batch_id: batchData.id,
               member_id: member.id,
@@ -391,7 +389,7 @@ const batchPromises = areasData?.map(async (area: any) => {
     try {
       const query = supabase
         .from('delivery_batches')
-        .select('*, area (id name), driver (id name phone)')
+        .select('*, area:delivery_areas!area_id(id, name), driver:drivers!driver_id(id, name, phone)')
         .eq('owner_id', user?.id || '')
         .order('created_at', { ascending: true });
 
@@ -958,16 +956,16 @@ const getAreaStats = (areaId: string) => {
             <CardHeader className="flex items-center justify-between">
               <CardTitle className="text-lg flex items-center gap-2">
                 <MapPin className="h-5 w-5" />
-                Delivery Areas
+                Delivery Zones
               </CardTitle>
-              <Button variant="outline" size="sm" onClick={() => setIsAddAreaOpen(true)}>
+              <Button variant="outline" size="sm" onClick={() => window.location.href = '/zones'}>
                 <Plus className="h-4 w-4 mr-1" />
-                Add Area
+                Manage Zones
               </Button>
             </CardHeader>
             <CardContent>
               {areas.length === 0 ? (
-                <p className="text-muted-foreground text-center py-8">No delivery areas yet. Add your first area to get started.</p>
+                <p className="text-muted-foreground text-center py-8">No delivery zones yet. <a href="/zones" className="text-primary hover:underline">Add zones</a> to get started.</p>
               ) : (
                 <ScrollArea className="space-y-3" style={{ maxHeight: '400px' }}>
                   {areas.map((area) => (

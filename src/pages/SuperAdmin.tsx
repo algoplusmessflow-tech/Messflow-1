@@ -27,7 +27,7 @@ import { useSuperAdmin } from '@/hooks/useSuperAdmin';
 import { useUserRole } from '@/hooks/useUserRole';
 import { useBroadcasts } from '@/hooks/useBroadcasts';
 import { formatDate } from '@/lib/format';
-import { Users, Megaphone, Gift, Loader2, Plus, Trash2, CheckCircle, XCircle, Link as LinkIcon, UserPlus, AlertTriangle, HardDrive, Shield, CreditCard, UserCheck, ShieldAlert, Download, Edit2, UsersRound, FileSpreadsheet, Search, BarChart3, Activity, Cloud, Database, Image as ImageIcon, Zap } from 'lucide-react';
+import { Users, Megaphone, Gift, Loader2, Plus, Trash2, CheckCircle, XCircle, Link as LinkIcon, UserPlus, AlertTriangle, HardDrive, Shield, CreditCard, UserCheck, ShieldAlert, Download, Edit2, UsersRound, FileSpreadsheet, Search, BarChart3, Activity, Cloud, Database, Image as ImageIcon, Zap, MapPin, MessageCircle } from 'lucide-react';
 import { toast } from 'sonner';
 import * as XLSX from 'xlsx';
 
@@ -63,7 +63,20 @@ export default function SuperAdmin() {
     fetchMembersForOwner,
     currentSuperAdminProfile,
     updateGatewaySettings,
+    updatePlatformApiConfig,
   } = useSuperAdmin();
+
+  // Platform API config state
+  const [apiConfig, setApiConfig] = useState({
+    google_client_id: '',
+    google_client_secret: '',
+    google_maps_key: '',
+    cloudinary_cloud_name: '',
+    cloudinary_upload_preset: '',
+    whatsapp_api_token: '',
+    storage_provider: 'cloudinary' as string,
+  });
+  const [showSecrets, setShowSecrets] = useState<Record<string, boolean>>({});
 
   const [gatewayConfig, setGatewayConfig] = useState({
     provider: 'razorpay',
@@ -81,6 +94,11 @@ export default function SuperAdmin() {
       }
       if (currentSuperAdminProfile.platform_gateway_config) {
         setGatewayConfig(currentSuperAdminProfile.platform_gateway_config);
+      }
+      // Load platform API config
+      const pCfg = (currentSuperAdminProfile as any).platform_api_config;
+      if (pCfg && typeof pCfg === 'object') {
+        setApiConfig((prev) => ({ ...prev, ...pCfg }));
       }
     }
   }, [currentSuperAdminProfile]);
@@ -649,6 +667,10 @@ export default function SuperAdmin() {
             <TabsTrigger value="admins">
               <Shield className="h-4 w-4 mr-2" />
               Admins
+            </TabsTrigger>
+            <TabsTrigger value="api-services">
+              <Zap className="h-4 w-4 mr-2" />
+              API & Services
             </TabsTrigger>
           </TabsList>
 
@@ -1780,6 +1802,235 @@ export default function SuperAdmin() {
               </CardContent>
             </Card>
           </TabsContent>
+
+          {/* ===== API & SERVICES TAB ===== */}
+          <TabsContent value="api-services" className="mt-4 space-y-4">
+            <Card className="backdrop-blur-xl border-border bg-card/80">
+              <CardHeader>
+                <CardTitle className="text-lg flex items-center gap-2">
+                  <Zap className="h-5 w-5 text-primary" />
+                  Platform API Configuration
+                </CardTitle>
+                <p className="text-sm text-muted-foreground">
+                  Configure API keys that are shared across all tenants. Users won't need to set these up individually.
+                </p>
+              </CardHeader>
+              <CardContent>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+
+                  {/* Google OAuth (for Google Drive) */}
+                  <Card className="border-border bg-background/50">
+                    <CardHeader className="pb-3">
+                      <CardTitle className="text-base font-semibold flex items-center gap-2">
+                        <Cloud className="h-4 w-4 text-blue-500" />
+                        Google OAuth (Drive)
+                      </CardTitle>
+                      <p className="text-xs text-muted-foreground">Enables Google Drive storage for tenant uploads</p>
+                    </CardHeader>
+                    <CardContent className="space-y-3">
+                      <div className="space-y-1">
+                        <Label className="text-xs">Client ID</Label>
+                        <Input
+                          type={showSecrets['google_client_id'] ? 'text' : 'password'}
+                          value={apiConfig.google_client_id}
+                          onChange={(e) => setApiConfig({ ...apiConfig, google_client_id: e.target.value })}
+                          placeholder="xxxx.apps.googleusercontent.com"
+                          className="text-sm h-9"
+                        />
+                      </div>
+                      <div className="space-y-1">
+                        <Label className="text-xs">Client Secret</Label>
+                        <Input
+                          type={showSecrets['google_client_secret'] ? 'text' : 'password'}
+                          value={apiConfig.google_client_secret}
+                          onChange={(e) => setApiConfig({ ...apiConfig, google_client_secret: e.target.value })}
+                          placeholder="GOCSPX-xxxx"
+                          className="text-sm h-9"
+                        />
+                      </div>
+                      <div className="p-2 bg-muted/30 rounded text-[10px] text-muted-foreground">
+                        <p className="font-medium mb-1">Setup:</p>
+                        <ol className="list-decimal list-inside space-y-0.5">
+                          <li>Go to console.cloud.google.com</li>
+                          <li>Create project → Enable Drive API</li>
+                          <li>OAuth consent screen → External</li>
+                          <li>Credentials → OAuth Client ID → Web app</li>
+                          <li>Add redirect URI: {typeof window !== 'undefined' ? window.location.origin : ''}/auth/google/callback</li>
+                        </ol>
+                      </div>
+                      <Badge variant={apiConfig.google_client_id ? 'default' : 'secondary'} className="text-xs">
+                        {apiConfig.google_client_id ? 'Configured' : 'Not configured'}
+                      </Badge>
+                    </CardContent>
+                  </Card>
+
+                  {/* Google Maps */}
+                  <Card className="border-border bg-background/50">
+                    <CardHeader className="pb-3">
+                      <CardTitle className="text-base font-semibold flex items-center gap-2">
+                        <MapPin className="h-4 w-4 text-green-500" />
+                        Google Maps
+                      </CardTitle>
+                      <p className="text-xs text-muted-foreground">Enables zone polygon drawing + geocoding for all tenants</p>
+                    </CardHeader>
+                    <CardContent className="space-y-3">
+                      <div className="space-y-1">
+                        <Label className="text-xs">API Key</Label>
+                        <Input
+                          type={showSecrets['google_maps_key'] ? 'text' : 'password'}
+                          value={apiConfig.google_maps_key}
+                          onChange={(e) => setApiConfig({ ...apiConfig, google_maps_key: e.target.value })}
+                          placeholder="AIzaSy..."
+                          className="text-sm h-9"
+                        />
+                      </div>
+                      <div className="p-2 bg-muted/30 rounded text-[10px] text-muted-foreground">
+                        <p className="font-medium mb-1">Required APIs (enable in Google Cloud Console):</p>
+                        <ul className="list-disc list-inside space-y-0.5">
+                          <li>Maps JavaScript API</li>
+                          <li>Geocoding API</li>
+                          <li>Maps Embed API</li>
+                          <li>Drawing Library (for polygon zones)</li>
+                        </ul>
+                      </div>
+                      <Badge variant={apiConfig.google_maps_key ? 'default' : 'secondary'} className="text-xs">
+                        {apiConfig.google_maps_key ? 'Configured' : 'Not configured'}
+                      </Badge>
+                    </CardContent>
+                  </Card>
+
+                  {/* Cloudinary */}
+                  <Card className="border-border bg-background/50">
+                    <CardHeader className="pb-3">
+                      <CardTitle className="text-base font-semibold flex items-center gap-2">
+                        <ImageIcon className="h-4 w-4 text-purple-500" />
+                        Cloudinary
+                      </CardTitle>
+                      <p className="text-xs text-muted-foreground">Image/receipt upload storage (current default)</p>
+                    </CardHeader>
+                    <CardContent className="space-y-3">
+                      <div className="space-y-1">
+                        <Label className="text-xs">Cloud Name</Label>
+                        <Input
+                          value={apiConfig.cloudinary_cloud_name}
+                          onChange={(e) => setApiConfig({ ...apiConfig, cloudinary_cloud_name: e.target.value })}
+                          placeholder="your-cloud-name"
+                          className="text-sm h-9"
+                        />
+                      </div>
+                      <div className="space-y-1">
+                        <Label className="text-xs">Upload Preset (Unsigned)</Label>
+                        <Input
+                          value={apiConfig.cloudinary_upload_preset}
+                          onChange={(e) => setApiConfig({ ...apiConfig, cloudinary_upload_preset: e.target.value })}
+                          placeholder="your-preset-name"
+                          className="text-sm h-9"
+                        />
+                      </div>
+                      <p className="text-[10px] text-muted-foreground">Falls back to .env values if empty</p>
+                      <Badge variant={apiConfig.cloudinary_cloud_name ? 'default' : 'secondary'} className="text-xs">
+                        {apiConfig.cloudinary_cloud_name ? 'Configured' : 'Using .env defaults'}
+                      </Badge>
+                    </CardContent>
+                  </Card>
+
+                  {/* WhatsApp Business */}
+                  <Card className="border-border bg-background/50">
+                    <CardHeader className="pb-3">
+                      <CardTitle className="text-base font-semibold flex items-center gap-2">
+                        <MessageCircle className="h-4 w-4 text-green-600" />
+                        WhatsApp Business API
+                      </CardTitle>
+                      <p className="text-xs text-muted-foreground">Platform-wide WhatsApp messaging token</p>
+                    </CardHeader>
+                    <CardContent className="space-y-3">
+                      <div className="space-y-1">
+                        <Label className="text-xs">Permanent Token</Label>
+                        <Input
+                          type={showSecrets['whatsapp_api_token'] ? 'text' : 'password'}
+                          value={apiConfig.whatsapp_api_token}
+                          onChange={(e) => setApiConfig({ ...apiConfig, whatsapp_api_token: e.target.value })}
+                          placeholder="EAAxxxxxxx..."
+                          className="text-sm h-9"
+                        />
+                      </div>
+                      <div className="p-2 bg-muted/30 rounded text-[10px] text-muted-foreground">
+                        <p className="font-medium mb-1">Setup:</p>
+                        <ol className="list-decimal list-inside space-y-0.5">
+                          <li>Go to developers.facebook.com</li>
+                          <li>Create app → WhatsApp Business</li>
+                          <li>Generate permanent token</li>
+                        </ol>
+                      </div>
+                      <Badge variant={apiConfig.whatsapp_api_token ? 'default' : 'secondary'} className="text-xs">
+                        {apiConfig.whatsapp_api_token ? 'Configured' : 'Not configured'}
+                      </Badge>
+                    </CardContent>
+                  </Card>
+
+                </div>
+
+                {/* Storage Provider Toggle */}
+                <div className="mt-6 p-4 border border-border rounded-lg bg-background/50">
+                  <div className="flex items-center justify-between mb-3">
+                    <div>
+                      <p className="text-sm font-medium">Default Storage Provider</p>
+                      <p className="text-xs text-muted-foreground">Choose where tenant uploads are stored</p>
+                    </div>
+                    <select
+                      className="p-2 border border-border rounded-md bg-card text-sm"
+                      value={apiConfig.storage_provider}
+                      onChange={(e) => setApiConfig({ ...apiConfig, storage_provider: e.target.value })}
+                    >
+                      <option value="cloudinary">Cloudinary (Default)</option>
+                      <option value="google_drive">Google Drive (per-user)</option>
+                    </select>
+                  </div>
+                  {apiConfig.storage_provider === 'google_drive' && !apiConfig.google_client_id && (
+                    <p className="text-xs text-amber-500 flex items-center gap-1">
+                      <AlertTriangle className="h-3 w-3" /> Configure Google OAuth above before enabling Google Drive
+                    </p>
+                  )}
+                </div>
+
+                {/* Save Button */}
+                <div className="mt-6 flex gap-3">
+                  <Button
+                    className="bg-gradient-to-r from-green-500 to-emerald-500 hover:from-green-600 hover:to-emerald-600 text-white font-semibold"
+                    onClick={() => updatePlatformApiConfig.mutateAsync(apiConfig)}
+                    disabled={updatePlatformApiConfig.isPending}
+                  >
+                    {updatePlatformApiConfig.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                    Save All API Configuration
+                  </Button>
+                </div>
+
+                {/* Connection Status Summary */}
+                <div className="mt-4 p-3 bg-muted/30 rounded-lg">
+                  <p className="text-xs font-medium text-muted-foreground mb-2">Service Status</p>
+                  <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
+                    <div className="flex items-center gap-1.5 text-xs">
+                      <div className={`h-2 w-2 rounded-full ${apiConfig.google_client_id ? 'bg-green-500' : 'bg-gray-300'}`} />
+                      Google Drive
+                    </div>
+                    <div className="flex items-center gap-1.5 text-xs">
+                      <div className={`h-2 w-2 rounded-full ${apiConfig.google_maps_key ? 'bg-green-500' : 'bg-gray-300'}`} />
+                      Google Maps
+                    </div>
+                    <div className="flex items-center gap-1.5 text-xs">
+                      <div className={`h-2 w-2 rounded-full ${apiConfig.cloudinary_cloud_name ? 'bg-green-500' : 'bg-amber-500'}`} />
+                      Cloudinary {!apiConfig.cloudinary_cloud_name && '(.env)'}
+                    </div>
+                    <div className="flex items-center gap-1.5 text-xs">
+                      <div className={`h-2 w-2 rounded-full ${apiConfig.whatsapp_api_token ? 'bg-green-500' : 'bg-gray-300'}`} />
+                      WhatsApp
+                    </div>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+          </TabsContent>
+
         </Tabs>
       </div>
 

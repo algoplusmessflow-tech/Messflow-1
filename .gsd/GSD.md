@@ -7,6 +7,7 @@
 - **Hosting:** Cloudflare Pages (SPA)
 - **State:** TanStack React Query v5
 - **Package Manager:** npm
+- **Supabase Project ID:** wgmbwjzvgxvqvpkgmydy
 
 ## Architecture Rules
 
@@ -15,135 +16,157 @@
 src/
 ├── components/          # Reusable UI components
 │   ├── ui/              # shadcn/ui primitives (DO NOT EDIT)
+│   ├── InlineAddSelect  # Dropdown with inline add/edit capability
 │   └── *.tsx            # App-specific components
 ├── hooks/               # Custom React hooks (data fetching, business logic)
+│   ├── useMembers.ts    # Members CRUD + realtime
+│   ├── useProfile.ts    # Profile/settings
+│   ├── useMapConfig.ts  # Map API config from profile
+│   └── *.ts
 ├── integrations/
 │   └── supabase/
 │       ├── client.ts    # Supabase client instance
 │       └── types.ts     # AUTO-GENERATED — never edit manually
-├── lib/                 # Utility functions (format, auth, pdf, etc.)
+├── lib/
+│   ├── auth.tsx         # Auth context + provider
+│   ├── format.ts        # Currency, date, expiry utilities
+│   ├── geolocation.ts   # Multi-provider geocoding (Google/Mapbox/HERE/LocationIQ/OSM)
+│   └── *.ts
 └── pages/               # Route-level page components
+    ├── Members.tsx       # Member management (1800+ lines, main CRUD page)
+    ├── DeliveryZones.tsx # Zone CRUD with location lookup
+    ├── DeliveryManagement.tsx # Batch delivery, driver assignment
+    ├── Invoices.tsx      # Invoice management
+    └── *.tsx
 ```
 
 ### Critical Constraints
-1. **Supabase types are auto-generated.** Never edit `src/integrations/supabase/types.ts` manually. Run: `npx supabase gen types typescript --project-id <PROJECT_ID> > src/integrations/supabase/types.ts`
-2. **RLS is mandatory.** Every table must have Row Level Security enabled with `owner_id = auth.uid()` policies.
-3. **No `useAuth()` in page components.** Auth is handled inside hooks (`useMembers`, `useProfile`, etc.). Pages get `user` only when they need it for Supabase calls not covered by hooks.
-4. **All Supabase queries go through hooks.** Pages should never import `supabase` directly unless absolutely necessary (e.g., one-off queries in Invoices).
-5. **TanStack Query keys must include `user?.id`** for proper cache scoping.
-6. **Mutations must invalidate their query keys** after success.
-7. **Realtime subscriptions** are set up in hooks, not in page components.
+1. **Supabase types are auto-generated.** Never edit `src/integrations/supabase/types.ts` manually. Regenerate: `npx supabase gen types typescript --project-id wgmbwjzvgxvqvpkgmydy > src/integrations/supabase/types.ts`
+2. **RLS is mandatory.** Every table must have `ENABLE ROW LEVEL SECURITY` + `GRANT ALL ON table TO authenticated` + per-operation policies using `owner_id = auth.uid()`.
+3. **All new columns need `as any` casts** until types are regenerated. Pattern: `await addMember.mutateAsync({ ...data } as any)`
+4. **TanStack Query keys must include `user?.id`** for proper cache scoping.
+5. **Mutations must invalidate their query keys** after success.
+6. **CSP in index.html** must include any external API domains in `connect-src`. Google Maps also needs `script-src`.
 
-### Deployment Constraints (Cloudflare/cPanel)
-- No `vite-plugin-compression` (not supported)
-- No `<noscript>` CSS fallbacks in `<head>`
-- Always zip `dist/` contents (not the folder itself) for cPanel
-- Use object-based `manualChunks` in vite config
-- Test on mobile, not just desktop (PageSpeed target: 90+)
+### Content Security Policy (index.html)
+Currently allowed external domains in `connect-src`:
+- `*.supabase.co`, `accounts.google.com`, `api.cloudinary.com`, `cloudflareinsights.com`
+- `nominatim.openstreetmap.org`, `maps.googleapis.com`, `api.mapbox.com`
+- `geocode.search.hereapi.com`, `us1.locationiq.com`, `geocode.maps.co`
+**If adding a new external API, you MUST add its domain to CSP in index.html.**
 
 ## Database Schema
 
-### Current Tables
-| Table | Purpose |
-|-------|---------|
-| `members` | Customer/subscriber records |
-| `transactions` | Payment and charge history |
-| `profiles` | Business owner settings |
-| `invoices` | Invoice records |
-| `invoice_items` | Line items per invoice |
-| `invoice_settings` | Invoice numbering/prefix config |
-| `delivery_areas` | Named delivery zones |
-| `drivers` | Delivery driver records |
-| `delivery_batches` | Grouped delivery runs |
-| `batch_deliveries` | Individual deliveries in a batch |
-| `expenses` | Business expense tracking |
-| `inventory` | Ingredient/supply inventory |
-| `inventory_consumption` | Daily consumption logs |
-| `menu` | Weekly meal menus |
-| `staff` | Employee records |
-| `staff_attendance` | Attendance tracking |
-| `salary_payments` | Salary disbursements |
-| `salary_advances` | Advance payments |
-| `petty_cash_transactions` | Petty cash register |
-| `notifications` | In-app notifications |
-| `broadcasts` | Bulk messages |
-| `security_logs` | Auth/security events |
-| `user_roles` | Super admin role assignments |
+### Members Table (Full — post 2026-03-18 migration)
+| Column | Type | Default | Notes |
+|--------|------|---------|-------|
+| id | UUID | auto | PK |
+| owner_id | UUID | - | FK auth.users |
+| name | TEXT | - | required |
+| phone | TEXT | - | required |
+| balance | NUMERIC | 0 | outstanding amount |
+| monthly_fee | NUMERIC | 0 | |
+| status | member_status enum | 'active' | active/inactive |
+| plan_type | plan_type enum | '3-time' | 1-time/2-time/3-time/custom |
+| joining_date | TIMESTAMPTZ | now() | |
+| plan_expiry_date | TIMESTAMPTZ | null | |
+| selected_menu_week | INTEGER | 1 | |
+| address | TEXT | null | delivery address |
+| delivery_area_id | UUID | null | FK delivery_areas |
+| special_notes | TEXT | null | allergies, preferences |
+| meal_type | TEXT | 'both' | lunch/dinner/both/breakfast/breakfast_lunch/all_three |
+| roti_quantity | INTEGER | 2 | |
+| rice_type | TEXT | 'white_rice' | custom values via rice_options table |
+| dietary_preference | TEXT | 'both' | veg/non_veg/both |
+| pause_service | BOOLEAN | false | temporarily stop deliveries |
+| skip_weekends | BOOLEAN | false | no Sat/Sun delivery |
+| free_trial | BOOLEAN | false | trial period active |
+| trial_days | INTEGER | null | 1/3/5/7/14/30 day trial duration |
 
-### Members Table (Extended — post migration)
+### Other Key Tables
+| Table | Purpose | Key Columns |
+|-------|---------|-------------|
+| `profiles` | Business settings | business_name, tax_trn, map_api_key, map_api_provider, whatsapp_api_key |
+| `delivery_areas` | Named zones | name, description, owner_id |
+| `rice_options` | Custom rice types per owner | name, label, sort_order, owner_id |
+| `drivers` | Delivery drivers | name, phone, access_code, status |
+| `delivery_batches` | Grouped delivery runs | date, area_id, driver_id, status |
+| `batch_deliveries` | Individual deliveries | batch_id, member_id, status |
+| `invoices` | Invoice records | invoice_number, member_id, total_amount, status |
+| `transactions` | Payment/charge history | member_id, amount, type |
+
+### RLS Pattern (every table)
 ```sql
--- Core fields
-id, owner_id, name, phone, balance, monthly_fee, status, plan_type,
-joining_date, plan_expiry_date, selected_menu_week,
--- New fields (2026-03-16 migration)
-address, delivery_area_id (FK → delivery_areas), special_notes,
-meal_type, roti_quantity, rice_type, dietary_preference,
-payment_status, pause_service, skip_weekends, free_trial
+ALTER TABLE public.TABLE ENABLE ROW LEVEL SECURITY;
+CREATE POLICY "t_s" ON public.TABLE FOR SELECT USING (owner_id = auth.uid());
+CREATE POLICY "t_i" ON public.TABLE FOR INSERT WITH CHECK (owner_id = auth.uid());
+CREATE POLICY "t_u" ON public.TABLE FOR UPDATE USING (owner_id = auth.uid()) WITH CHECK (owner_id = auth.uid());
+CREATE POLICY "t_d" ON public.TABLE FOR DELETE USING (owner_id = auth.uid());
+GRANT ALL ON public.TABLE TO authenticated;
 ```
+**CRITICAL: The `GRANT ALL` line is required. Without it, even correct policies will fail with "permission denied".**
 
-### Enums
-- `plan_type`: '1-time' | '2-time' | '3-time' | 'custom'
-- `member_status`: 'active' | 'inactive'
-- `meal_type_enum`: 'lunch' | 'dinner' | 'both'
-- `dietary_pref_enum`: 'veg' | 'non_veg' | 'both'
-- `rice_type_enum`: 'none' | 'white_rice' | 'brown_rice' | 'jeera_rice' | 'biryani'
+## API Integration Architecture
+
+### Map/Geocoding API
+- Configured in Settings → Integrations → Map API
+- Stored in `profiles`: `map_api_key`, `map_api_provider`, `custom_map_base_url`
+- Used via: `import { useMapConfig } from '@/hooks/useMapConfig'` + `fetchLocationFromAddress(address, mapConfig)`
+- **Google Maps uses JS Geocoder** (not REST API) to avoid CORS — script loaded dynamically
+- Other providers (LocationIQ, Mapbox, HERE) use CORS-friendly REST APIs
+- Default: OpenStreetMap Nominatim (free, no key needed)
+
+### WhatsApp API
+- Stored in `profiles`: `whatsapp_api_key`
+- Currently uses `wa.me` links (no API integration yet)
+
+### Custom Options (InlineAddSelect pattern)
+- Rice types: `rice_options` table, managed inline from Members form
+- Delivery zones: `delivery_areas` table, managed inline + dedicated /zones page
+- Pattern: dropdown with + button → inline input → creates DB record → auto-selects
 
 ## Coding Standards
 
 ### Component Patterns
-- Use functional components with hooks
-- Prefer `useMemo` for derived data, `useState` for UI state
-- Loading states: use `<Skeleton>` from shadcn/ui
-- Error states: use `ErrorBoundary` wrapper
-- Forms: controlled components with `useState`, not react-hook-form
-- Icons: import from `lucide-react` only
-
-### Styling
-- Tailwind CSS utility classes only
-- No inline styles, no CSS modules
-- Use shadcn/ui components for all UI primitives
-- Dark mode: use `text-foreground`, `bg-background`, `bg-muted` etc.
-- Mobile-first: always test at 400px width
+- Functional components with hooks only
+- `useMemo` for derived data, `useState` for UI state
+- Loading: `<Skeleton>` from shadcn/ui
+- Error: `ErrorBoundary` wrapper
+- Forms: controlled `useState`, NOT react-hook-form
+- Icons: `lucide-react` only
+- Dropdowns with add/edit: use `InlineAddSelect` component
 
 ### Data Fetching
 ```typescript
-// Pattern: useQuery in a custom hook
 const { data, isLoading } = useQuery({
   queryKey: ['entity', user?.id],
   queryFn: async () => { /* supabase call */ },
   enabled: !!user,
-});
-
-// Pattern: mutation with cache invalidation
-const mutation = useMutation({
-  mutationFn: async (data) => { /* supabase call */ },
-  onSuccess: () => {
-    queryClient.invalidateQueries({ queryKey: ['entity', user?.id] });
-    toast.success('Done!');
-  },
+  staleTime: 30000, // 30s cache for non-critical data
 });
 ```
 
 ### Error Handling
-- Supabase errors: catch, log to console, show `toast.error()`
-- Never throw unhandled errors in async functions
-- Always provide fallback UI for missing data
+- Supabase errors: catch → `console.error()` → `toast.error()`
+- Fallback data: return `[]` or `null` on failure, never throw unhandled
+- RLS errors: check GRANT exists, not just policies
 
 ## Agent Instructions
-When an AI agent works on this codebase:
-1. **Read this file first** before making any changes
-2. **Never create placeholder comments** like `{/* ... (same as original) ... */}`
-3. **Never gut existing working code** — if rewriting a file, ensure 100% feature parity
-4. **Run `npm run build`** after changes to verify no TypeScript errors
-5. **Check the Supabase types** match the database before writing queries
-6. **Test at 400px mobile width** for all UI changes
-7. **Preserve all existing imports** — don't remove unused-looking imports without verifying
-8. **Keep `.env` credentials out of commits** — never log, print, or expose them
+1. **Read this file + .gsd/CHECKLIST.md** before any changes
+2. **NEVER create `{/* ... (same as original) ... */}` placeholders**
+3. **NEVER gut existing working code** — 100% feature parity required
+4. **After schema changes:** run migration SQL, then `npx supabase gen types typescript --project-id wgmbwjzvgxvqvpkgmydy > src/integrations/supabase/types.ts`
+5. **After code changes:** `npm run build` to verify TypeScript
+6. **Test at 400px mobile width**
+7. **Keep .env out of output**
+8. **New external API domain?** Add to CSP `connect-src` in index.html
+9. **New table?** Add RLS policies + GRANT + add to this doc
 
-## Common Pitfalls (Learned from Experience)
-- Vibe-coding agents often replace working sections with `{/* ... */}` placeholders — NEVER do this
-- Supabase join syntax: use `table_name:foreign_key (columns)` not `alias (columns)`
-- `plan_type` enum in Supabase must match the TypeScript enum exactly
-- `date-fns` `format()` is used for date display — always import it
-- WhatsApp phone formatting: strip spaces/dashes, add country code `971` for UAE
-- The `useMembers` hook types come from auto-generated Supabase types — after schema changes, regenerate types before updating the hook
+## Common Pitfalls
+- `GRANT ALL ON table TO authenticated` is REQUIRED alongside RLS policies
+- Google Maps Geocoding REST API blocks CORS — use JS Geocoder instead
+- CSP in index.html blocks any fetch to domains not in `connect-src`
+- Don't pass `id:` in Supabase inserts — let `gen_random_uuid()` handle it
+- `as any` casts needed when using columns not yet in regenerated types
+- Supabase join: `table:fk_column(cols)` — PostgREST auto-resolves short aliases too
+- WhatsApp phone: strip spaces/dashes, prepend `971` for UAE numbers
