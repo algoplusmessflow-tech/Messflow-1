@@ -1,6 +1,7 @@
 import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/lib/auth';
+import { getDaysUntilExpiry } from '@/lib/format';
 
 export type PrepSummary = {
   totalMeals: number;
@@ -61,18 +62,18 @@ export function useKitchenPrep(date?: string) {
       }
 
       try {
-        // Get active members with their food preferences
+        // Get active members with their food preferences (excluding expired memberships)
         const { data: members, error } = await supabase
           .from('members')
           .select(`
             id, name, phone, address,
             meal_type, roti_quantity, rice_type, dietary_preference,
             pause_service, skip_weekends, free_trial,
-            delivery_area_id,
+            delivery_area_id, plan_expiry_date,
             delivery_areas!members_delivery_area_id_fkey(name)
           `)
           .eq('owner_id', user.id)
-          .eq('status', 'active');
+          .eq('status', 'active') as any;
 
         if (error) {
           console.warn('Error fetching kitchen prep data:', error.message);
@@ -95,6 +96,14 @@ export function useKitchenPrep(date?: string) {
           if (isPaused) {
             summary.pausedCount++;
             return;
+          }
+
+          // Skip expired memberships
+          if (member.plan_expiry_date) {
+            const daysUntilExpiry = getDaysUntilExpiry(member.plan_expiry_date);
+            if (daysUntilExpiry < 0) {
+              return; // Membership has expired
+            }
           }
 
           // Skip weekends check
@@ -152,18 +161,31 @@ export function useKitchenPrep(date?: string) {
 
         const { data: members } = await supabase
           .from('members')
-          .select('id, meal_type, roti_quantity, dietary_preference, delivery_area_id, pause_service, skip_weekends')
+          .select('id, meal_type, roti_quantity, dietary_preference, delivery_area_id, pause_service, skip_weekends, plan_expiry_date')
           .eq('owner_id', user.id)
-          .eq('status', 'active');
+          .eq('status', 'active') as any;
 
         const dayOfWeek = new Date(queryDate).getDay();
 
         const areaStats: PrepByArea[] = (areas || []).map(area => {
-          const areaMembers = (members || []).filter(m => 
-            m.delivery_area_id === area.id && 
-            !m.pause_service &&
-            !(m.skip_weekends && (dayOfWeek === 5 || dayOfWeek === 6))
-          ) || [];
+          const areaMembers = (members || []).filter(m => {
+            // Check basic filters
+            if (m.delivery_area_id !== area.id || m.pause_service) {
+              return false;
+            }
+            // Check weekend skip
+            if (m.skip_weekends && (dayOfWeek === 5 || dayOfWeek === 6)) {
+              return false;
+            }
+            // Check expired memberships
+            if (m.plan_expiry_date) {
+              const daysUntilExpiry = getDaysUntilExpiry(m.plan_expiry_date);
+              if (daysUntilExpiry < 0) {
+                return false; // Membership has expired
+              }
+            }
+            return true;
+          }) || [];
 
           return {
             areaId: area.id,
@@ -198,18 +220,29 @@ export function useKitchenPrep(date?: string) {
             id, name, phone, address,
             meal_type, roti_quantity, rice_type, dietary_preference,
             pause_service, skip_weekends, free_trial,
-            delivery_area_id,
+            delivery_area_id, plan_expiry_date,
             delivery_areas!members_delivery_area_id_fkey(name)
           `)
           .eq('owner_id', user.id)
           .eq('status', 'active')
           .order('delivery_area_id', { ascending: true })
-          .order('name', { ascending: true });
+          .order('name', { ascending: true }) as any;
 
         const dayOfWeek = new Date(queryDate).getDay();
 
         return (members || [])
-          .filter(m => !m.pause_service && !(m.skip_weekends && (dayOfWeek === 5 || dayOfWeek === 6)))
+          .filter(m => {
+            // Check pause service
+            if (m.pause_service) return false;
+            // Check weekend skip
+            if (m.skip_weekends && (dayOfWeek === 5 || dayOfWeek === 6)) return false;
+            // Check expired memberships
+            if (m.plan_expiry_date) {
+              const daysUntilExpiry = getDaysUntilExpiry(m.plan_expiry_date);
+              if (daysUntilExpiry < 0) return false; // Membership has expired
+            }
+            return true;
+          })
           .map(m => ({
             id: m.id,
             name: m.name,
