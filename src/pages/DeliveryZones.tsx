@@ -12,6 +12,9 @@ import {
   Dialog, DialogContent, DialogHeader, DialogTitle,
 } from '@/components/ui/dialog';
 import {
+  Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
+} from '@/components/ui/select';
+import {
   AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
   AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
 } from '@/components/ui/alert-dialog';
@@ -20,7 +23,7 @@ import { useAuth } from '@/lib/auth';
 import { useMapConfig } from '@/hooks/useMapConfig';
 import { fetchLocationFromAddress, haversineDistance, generateEmbedUrl } from '@/lib/geolocation';
 import { toast } from 'sonner';
-import { Plus, Pencil, Trash2, MapPin, Loader2, Users, Search, X, Navigation, Radius, UserCheck } from 'lucide-react';
+import { Plus, Pencil, Trash2, MapPin, Loader2, Users, Search, X, Navigation, Radius, UserCheck, Truck } from 'lucide-react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 
 type DeliveryZone = {
@@ -31,10 +34,16 @@ type DeliveryZone = {
   center_lat: number | null;
   center_lng: number | null;
   radius_km: number | null;
+  driver_id: string | null;
   created_at: string;
   updated_at: string;
   member_count?: number;
   members_in_radius?: number;
+  driver?: {
+    id: string;
+    name: string;
+    phone: string;
+  };
 };
 
 type MemberGeo = {
@@ -65,15 +74,41 @@ export default function DeliveryZones() {
   const [locationResult, setLocationResult] = useState<string | null>(null);
   const [locationError, setLocationError] = useState('');
   const [isAutoAssigning, setIsAutoAssigning] = useState(false);
+  const [assignDriverId, setAssignDriverId] = useState<string | null>(null);
+  const [isAssignDriverOpen, setIsAssignDriverOpen] = useState(false);
 
-  // Fetch zones
+  // Fetch zones with driver info
   const { data: zones = [], isLoading } = useQuery({
     queryKey: ['delivery-zones', user?.id],
     queryFn: async () => {
       if (!user) return [];
-      const areasResult = await supabase.from('delivery_areas').select('*').eq('owner_id', user.id).order('name');
+      const areasResult = await supabase
+        .from('delivery_areas')
+        .select('*, driver:drivers(id, name, phone)')
+        .eq('owner_id', user.id)
+        .order('name');
       if (areasResult.error) throw areasResult.error;
-      return (areasResult.data || []) as DeliveryZone[];
+      
+      return (areasResult.data || []).map((zone: any) => ({
+        ...zone,
+        driver: zone.driver?.[0] || null,
+      })) as DeliveryZone[];
+    },
+    enabled: !!user,
+    staleTime: 30000,
+  });
+
+  // Fetch drivers for assignment
+  const { data: drivers = [] } = useQuery({
+    queryKey: ['drivers', user?.id],
+    queryFn: async () => {
+      if (!user) return [];
+      const { data } = await supabase
+        .from('drivers')
+        .select('id, name, phone')
+        .eq('owner_id', user.id)
+        .order('name');
+      return data || [];
     },
     enabled: !!user,
     staleTime: 30000,
@@ -87,10 +122,10 @@ export default function DeliveryZones() {
       try {
         const { data } = await supabase
           .from('members')
-          .select('id, name, phone, delivery_area_id, location_lat, location_lng, status')
+          .select('id, name, phone, status, delivery_area_id, location_lat, location_lng' as any)
           .eq('owner_id', user.id)
           .eq('status', 'active');
-        return (data || []) as MemberGeo[];
+        return (data || []) as unknown as MemberGeo[];
       } catch { return []; }
     },
     enabled: !!user,
@@ -209,6 +244,23 @@ export default function DeliveryZones() {
       queryClient.invalidateQueries({ queryKey: ['delivery-zones', user?.id] });
       toast.success('Zone deleted!');
       setDeleteId(null);
+    },
+    onError: (e) => toast.error('Failed: ' + e.message),
+  });
+
+  const assignDriver = useMutation({
+    mutationFn: async ({ zoneId, driverId }: { zoneId: string; driverId: string | null }) => {
+      const { error } = await supabase
+        .from('delivery_areas')
+        .update({ driver_id: driverId } as any)
+        .eq('id', zoneId);
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['delivery-zones', user?.id] });
+      toast.success(assignDriverId ? 'Driver assigned!' : 'Driver removed!');
+      setIsAssignDriverOpen(false);
+      setAssignDriverId(null);
     },
     onError: (e) => toast.error('Failed: ' + e.message),
   });
@@ -495,6 +547,15 @@ export default function DeliveryZones() {
                       </div>
                     </div>
                     <div className="flex items-center gap-2 flex-shrink-0">
+                      <Button
+                        size="sm" variant={zone.driver_id ? "default" : "outline"}
+                        className="text-xs"
+                        onClick={() => { setAssignDriverId(zone.id); setIsAssignDriverOpen(true); }}
+                        title={zone.driver_id ? "Change driver" : "Assign driver"}
+                      >
+                        <Truck className="h-3 w-3 mr-1" />
+                        {zone.driver ? zone.driver.name : "Assign Driver"}
+                      </Button>
                       {zone.center_lat && zone.radius_km && (
                         <Button
                           size="sm" variant="outline"
@@ -580,6 +641,46 @@ export default function DeliveryZones() {
             </AlertDialogFooter>
           </AlertDialogContent>
         </AlertDialog>
+
+        {/* Assign Driver Dialog */}
+        <Dialog open={isAssignDriverOpen} onOpenChange={setIsAssignDriverOpen}>
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle>Assign Driver to Zone</DialogTitle>
+            </DialogHeader>
+            <div className="space-y-4">
+              <div className="space-y-2">
+                <Label>Select Driver</Label>
+                <Select
+                  onValueChange={(value) => {
+                    if (value === 'none') {
+                      assignDriver.mutate({ zoneId: assignDriverId!, driverId: null });
+                    } else {
+                      assignDriver.mutate({ zoneId: assignDriverId!, driverId: value });
+                    }
+                  }}
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder="Choose a driver" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="none">No Driver</SelectItem>
+                    {drivers.map((driver) => (
+                      <SelectItem key={driver.id} value={driver.id}>
+                        {driver.name} - {driver.phone}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="flex gap-3">
+                <Button variant="outline" onClick={() => setIsAssignDriverOpen(false)} className="flex-1">
+                  Cancel
+                </Button>
+              </div>
+            </div>
+          </DialogContent>
+        </Dialog>
       </div>
     </AppLayout>
   );

@@ -7,6 +7,7 @@ import { useTransactions } from '@/hooks/useTransactions';
 import { useExpenses } from '@/hooks/useExpenses';
 import { useProfile } from '@/hooks/useProfile';
 import { useGenerationLimits } from '@/hooks/useGenerationLimits';
+import { useRealtimeSheetsSync } from '@/hooks/useRealtimeSheetsSync';
 import { formatCurrency, formatDate, getDaysUntilExpiry } from '@/lib/format';
 import { Users, Clock, TrendingUp, TrendingDown, Receipt, AlertTriangle, CreditCard, AlertCircle, FileText, FileSpreadsheet } from 'lucide-react';
 import { BarChart, Bar, XAxis, YAxis, ResponsiveContainer, Tooltip, Legend } from 'recharts';
@@ -57,6 +58,9 @@ export default function Dashboard() {
   const { todayExpenses, weeklyExpenses, isLoading: expensesLoading } = useExpenses();
   const generationLimits = useGenerationLimits();
   const queryClient = useQueryClient();
+
+  // Real-time Google Sheets backup sync (fires on member changes)
+  useRealtimeSheetsSync();
 
   const isLoading = profileLoading || membersLoading || transactionsLoading || expensesLoading;
 

@@ -95,7 +95,14 @@ function GoogleDriveCard({ userId }: { userId: string }) {
           setGoogleAvatar(session?.user?.user_metadata?.avatar_url || null);
         }
         const gd = await import('@/lib/google-drive');
-        setDriveEnabled(await gd.isGoogleDriveConnected(userId));
+        const connected = await gd.isGoogleDriveConnected(userId);
+        // Auto-enable Drive for Google users
+        if ((isGoogleUser || hasToken) && !connected) {
+          await gd.enableGoogleDrive(userId);
+          setDriveEnabled(true);
+        } else {
+          setDriveEnabled(connected);
+        }
         // Fetch real-time Drive quota
         if (hasToken) {
           const quota = await gd.getGoogleDriveStorageInfo();
@@ -268,25 +275,14 @@ function GoogleDriveCard({ userId }: { userId: string }) {
           </div>
         )}
 
-        {/* Drive Enable/Disable Toggle */}
-        <div className={`flex items-center justify-between gap-4 p-3 rounded-lg border ${driveEnabled ? 'border-green-500/30 bg-green-500/5' : 'bg-muted/30'}`}>
-          <div className="flex items-center gap-2">
-            <Cloud className={`h-4 w-4 ${driveEnabled ? 'text-green-500' : 'text-muted-foreground'}`} />
-            <div>
-              <p className="text-sm font-medium">{driveEnabled ? 'Google Drive Active' : 'Enable Google Drive'}</p>
-              <p className="text-[10px] text-muted-foreground">
-                {driveEnabled ? 'All uploads go to your Drive' : 'Use your personal Drive for uploads'}
-              </p>
-            </div>
+        {/* Drive Status */}
+        <div className="flex items-center gap-2 p-3 rounded-lg border border-green-500/30 bg-green-500/5">
+          <Cloud className="h-4 w-4 text-green-500" />
+          <div className="flex-1">
+            <p className="text-sm font-medium">Google Drive Active</p>
+            <p className="text-[10px] text-muted-foreground">All uploads and backups go to your Google Drive</p>
           </div>
-          {driveEnabled ? (
-            <Button variant="outline" size="sm" onClick={handleDisable} className="text-xs h-7">Disable</Button>
-          ) : (
-            <Button size="sm" onClick={handleEnable} disabled={enabling} className="text-xs h-7">
-              {enabling ? <Loader2 className="h-3 w-3 animate-spin mr-1" /> : null}
-              Enable
-            </Button>
-          )}
+          <Check className="h-4 w-4 text-green-500" />
         </div>
 
         {/* Google Sheets Backup — only shown when Drive is active */}
@@ -1086,7 +1082,8 @@ export default function Settings() {
             <GoogleDriveCard userId={user?.id || ''} />
 
             <div className="grid gap-4 md:grid-cols-2">
-              <GlassCard>
+              {/* Cloudinary card — only show if user is NOT using Google Drive */}
+              {(profile as any)?.storage_provider !== 'google_drive' && <GlassCard>
                 <GlassCardHeader>
                   <GlassCardTitle className="text-lg flex items-center gap-3">
                     <div className="p-2 rounded-lg bg-cyan-500/10">
@@ -1122,7 +1119,7 @@ export default function Settings() {
                     </p>
                   </div>
                 </GlassCardContent>
-              </GlassCard>
+              </GlassCard>}
 
               <GlassCard>
                 <GlassCardHeader>

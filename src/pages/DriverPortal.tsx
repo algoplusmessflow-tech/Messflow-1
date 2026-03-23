@@ -1,15 +1,13 @@
 import { useState, useEffect } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
+import { useParams } from 'react-router-dom';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Badge } from '@/components/ui/badge';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
-import { Truck, MapPin, Phone, CheckCircle, XCircle, Clock, Search, LogIn, Package } from 'lucide-react';
-import { formatDate } from '@/lib/format';
+import { Truck, MapPin, Phone, CheckCircle, XCircle, Search, LogIn } from 'lucide-react';
 import { Logo } from '@/components/Logo';
 
 type Driver = {
@@ -21,54 +19,61 @@ type Driver = {
   owner_id: string;
 };
 
-type DeliveryBatch = {
+type ZoneMember = {
   id: string;
-  date: string;
-  area_id: string;
-  driver_id: string;
-  status: string;
-  area?: {
-    name: string;
-  };
-};
-
-type BatchDelivery = {
-  id: string;
-  batch_id: string;
-  member_id: string;
-  status: string;
-  delivery_time?: string;
-  remarks?: string;
-  member?: {
-    id: string;
-    name: string;
-    phone: string;
-    address: string;
-  };
+  name: string;
+  phone: string;
+  address: string | null;
+  location_lat: number | null;
+  location_lng: number | null;
+  map_link: string | null;
+  delivery_status?: string;
 };
 
 export default function DriverPortal() {
   const { ownerId, slug } = useParams();
-  const navigate = useNavigate();
   
   const [accessCode, setAccessCode] = useState('');
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [driver, setDriver] = useState<Driver | null>(null);
   const [loading, setLoading] = useState(false);
-  const [batches, setBatches] = useState<DeliveryBatch[]>([]);
-  const [selectedBatch, setSelectedBatch] = useState<string | null>(null);
-  const [deliveries, setDeliveries] = useState<BatchDelivery[]>([]);
-  const [deliveriesLoading, setDeliveriesLoading] = useState(false);
+  const [members, setMembers] = useState<ZoneMember[]>([]);
+  const [membersLoading, setMembersLoading] = useState(false);
   const [resolvedOwnerId, setResolvedOwnerId] = useState<string | null>(ownerId || null);
+  const [searchQuery, setSearchQuery] = useState('');
 
-  // Resolve slug to owner ID
   useEffect(() => {
     if (ownerId) { setResolvedOwnerId(ownerId); return; }
     if (!slug) return;
     const resolve = async () => {
-      let result = await supabase.from('profiles').select('user_id').eq('business_slug', slug).maybeSingle();
-      if (!result.data) result = await supabase.from('profiles').select('user_id').eq('user_id', slug).maybeSingle();
-      if (result.data) setResolvedOwnerId(result.data.user_id);
+      try {
+        const profileQuery = supabase
+          .from('profiles')
+          .select('user_id')
+          .eq('business_slug', slug)
+          .maybeSingle();
+        
+        const { data: slugResult } = await profileQuery as any;
+        
+        if (slugResult?.user_id) {
+          setResolvedOwnerId(slugResult.user_id);
+          return;
+        }
+
+        const idQuery = supabase
+          .from('profiles')
+          .select('user_id')
+          .eq('user_id', slug)
+          .maybeSingle();
+        
+        const { data: idResult } = await idQuery as any;
+        
+        if (idResult?.user_id) {
+          setResolvedOwnerId(idResult.user_id);
+        }
+      } catch (e) {
+        console.warn('Failed to resolve owner:', e);
+      }
     };
     resolve();
   }, [ownerId, slug]);
@@ -106,64 +111,45 @@ export default function DriverPortal() {
   };
 
   useEffect(() => {
-    if (isAuthenticated && driver) {
-      const fetchBatches = async () => {
-        const { data, error } = await supabase
-          .from('delivery_batches')
-          .select('*, area (name)')
-          .eq('driver_id', driver.id)
-          .order('date', { ascending: false })
-          .limit(10);
+    if (isAuthenticated && driver && resolvedOwnerId) {
+      const fetchAssignedMembers = async () => {
+        setMembersLoading(true);
+        try {
+          const { data, error } = await supabase
+            .from('members')
+            .select('id, name, phone, address, location_lat, location_lng, map_link, delivery_area_id' as any)
+            .eq('owner_id', resolvedOwnerId)
+            .eq('status', 'active');
 
-        if (!error && data) {
-          setBatches(data);
+          if (error) throw error;
+
+          const { data: mappings } = await supabase
+            .from('driver_zone_mapping')
+            .select('zone_id')
+            .eq('driver_id', driver.id);
+
+          const assignedZoneIds = mappings?.map(m => m.zone_id) || [];
+
+          const assignedMembers = (data || []).filter((m: any) => 
+            m.delivery_area_id && assignedZoneIds.includes(m.delivery_area_id)
+          );
+
+          const membersWithStatus = assignedMembers.map((m: any) => ({
+            ...m,
+            delivery_status: m.delivery_status || 'pending'
+          }));
+
+          setMembers(membersWithStatus);
+        } catch (err) {
+          console.error('Error fetching members:', err);
+          toast.error('Failed to load deliveries');
+        } finally {
+          setMembersLoading(false);
         }
       };
-      fetchBatches();
+      fetchAssignedMembers();
     }
-  }, [isAuthenticated, driver]);
-
-  useEffect(() => {
-    if (selectedBatch) {
-      const fetchDeliveries = async () => {
-        setDeliveriesLoading(true);
-        const { data, error } = await supabase
-          .from('batch_deliveries')
-          .select('*, member (id, name, phone, address)')
-          .eq('batch_id', selectedBatch)
-          .order('created_at', { ascending: true });
-
-        if (!error && data) {
-          setDeliveries(data);
-        }
-        setDeliveriesLoading(false);
-      };
-      fetchDeliveries();
-    }
-  }, [selectedBatch]);
-
-  const handleUpdateStatus = async (deliveryId: string, status: string, remarks?: string) => {
-    try {
-      const { error } = await supabase
-        .from('batch_deliveries')
-        .update({
-          status,
-          remarks: remarks || null,
-          delivery_time: status === 'delivered' ? new Date().toISOString() : null,
-          updated_at: new Date().toISOString()
-        })
-        .eq('id', deliveryId);
-
-      if (error) throw error;
-
-      setDeliveries(deliveries.map(d => 
-        d.id === deliveryId ? { ...d, status, remarks: remarks || null } : d
-      ));
-      toast.success('Delivery status updated!');
-    } catch (error) {
-      toast.error('Failed to update status');
-    }
-  };
+  }, [isAuthenticated, driver, resolvedOwnerId]);
 
   const getStatusBadge = (status: string) => {
     switch (status) {
@@ -176,7 +162,12 @@ export default function DriverPortal() {
     }
   };
 
-  // Login Screen
+  const filteredMembers = members.filter(m =>
+    m.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+    m.phone.includes(searchQuery) ||
+    (m.address && m.address.toLowerCase().includes(searchQuery.toLowerCase()))
+  );
+
   if (!isAuthenticated) {
     return (
       <div className="min-h-screen bg-gradient-to-b from-primary/10 to-background flex flex-col items-center justify-center p-4">
@@ -187,7 +178,7 @@ export default function DriverPortal() {
             </div>
             <CardTitle className="text-xl">Driver Portal</CardTitle>
             <p className="text-muted-foreground text-sm">
-              Enter your access code to view your deliveries
+              Enter your access code to view your assigned deliveries
             </p>
           </CardHeader>
           <CardContent>
@@ -219,7 +210,6 @@ export default function DriverPortal() {
 
   return (
     <div className="min-h-screen bg-gradient-to-b from-primary/5 to-background">
-      {/* Header */}
       <header className="bg-card/80 backdrop-blur-xl border-b sticky top-0 z-50">
         <div className="max-w-md mx-auto px-4 py-4 flex items-center justify-between">
           <div className="flex items-center gap-3">
@@ -236,119 +226,99 @@ export default function DriverPortal() {
       </header>
 
       <main className="max-w-md mx-auto p-4 space-y-4">
-        {/* Batch Selection */}
         <Card>
           <CardHeader>
             <CardTitle className="text-lg flex items-center gap-2">
-              <Package className="h-5 w-5" />
-              Today's Deliveries
+              <MapPin className="h-5 w-5" />
+              My Assigned Deliveries
             </CardTitle>
           </CardHeader>
           <CardContent className="space-y-3">
-            {batches.length === 0 ? (
-              <p className="text-muted-foreground text-center py-4">
-                No deliveries assigned yet
-              </p>
-            ) : (
-              batches.map((batch) => (
-                <div
-                  key={batch.id}
-                  className={`p-3 border rounded-lg cursor-pointer transition-all ${
-                    selectedBatch === batch.id ? 'border-primary bg-primary/5' : 'hover:bg-muted/50'
-                  }`}
-                  onClick={() => setSelectedBatch(batch.id)}
-                >
-                  <div className="flex items-center justify-between">
-                    <div>
-                      <p className="font-medium">{batch.area?.name || 'No area'}</p>
-                      <p className="text-xs text-muted-foreground">
-                        {formatDate(new Date(batch.date))}
-                      </p>
-                    </div>
-                    <Badge {...getStatusBadge(batch.status)}>
-                      {batch.status}
-                    </Badge>
-                  </div>
-                </div>
-              ))
-            )}
+            <div className="relative">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+              <Input
+                placeholder="Search by name, phone, or address..."
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                className="pl-9"
+              />
+            </div>
+            <div className="text-sm text-muted-foreground">
+              {filteredMembers.length} of {members.length} deliveries
+            </div>
           </CardContent>
         </Card>
 
-        {/* Delivery List */}
-        {selectedBatch && (
+        {membersLoading ? (
+          <div className="space-y-3">
+            {[1, 2, 3].map(i => (
+              <Card key={i}>
+                <CardContent className="p-4">
+                  <div className="h-20 bg-muted rounded-lg animate-pulse" />
+                </CardContent>
+              </Card>
+            ))}
+          </div>
+        ) : filteredMembers.length === 0 ? (
           <Card>
-            <CardHeader>
-              <CardTitle className="text-lg">Delivery Details</CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-3">
-              {deliveriesLoading ? (
-                <div className="space-y-2">
-                  {[1, 2, 3].map(i => (
-                    <div key={i} className="h-16 bg-muted rounded-lg animate-pulse" />
-                  ))}
-                </div>
-              ) : deliveries.length === 0 ? (
-                <p className="text-muted-foreground text-center py-4">
-                  No deliveries in this batch
-                </p>
-              ) : (
-                deliveries.map((delivery) => (
-                  <div key={delivery.id} className="border rounded-lg p-3 space-y-2">
-                    <div className="flex items-start justify-between">
-                      <div className="flex-1">
-                        <p className="font-medium">{delivery.member?.name}</p>
-                        <p className="text-sm text-muted-foreground flex items-center gap-1">
-                          <Phone className="h-3 w-3" />
-                          {delivery.member?.phone}
-                        </p>
-                        <p className="text-sm text-muted-foreground flex items-center gap-1">
-                          <MapPin className="h-3 w-3" />
-                          {delivery.member?.address}
-                        </p>
-                      </div>
-                      <Badge {...getStatusBadge(delivery.status)}>
-                        {delivery.status}
-                      </Badge>
-                    </div>
-                    
-                    {/* Action Buttons */}
-                    {delivery.status === 'pending' || delivery.status === 'out_for_delivery' ? (
-                      <div className="flex gap-2 pt-2">
-                        <Button 
-                          size="sm" 
-                          className="flex-1 bg-green-600 hover:bg-green-700"
-                          onClick={() => handleUpdateStatus(delivery.id, 'delivered')}
-                        >
-                          <CheckCircle className="h-4 w-4 mr-1" />
-                          Delivered
-                        </Button>
-                        <Button 
-                          size="sm" 
-                          variant="destructive"
-                          className="flex-1"
-                          onClick={() => handleUpdateStatus(delivery.id, 'not_delivered')}
-                        >
-                          <XCircle className="h-4 w-4 mr-1" />
-                          Not Delivered
-                        </Button>
-                      </div>
-                    ) : delivery.status === 'delivered' ? (
-                      <p className="text-xs text-green-600 pt-1">
-                        Delivered at: {delivery.delivery_time ? formatDate(new Date(delivery.delivery_time)) : 'N/A'}
-                      </p>
-                    ) : null}
-                    
-                    {delivery.remarks && (
-                      <p className="text-xs text-muted-foreground pt-1 border-t">
-                        Note: {delivery.remarks}
+            <CardContent className="py-12 text-center">
+              <MapPin className="h-12 w-12 mx-auto text-muted-foreground/30 mb-4" />
+              <p className="text-muted-foreground">
+                {members.length === 0 
+                  ? 'No deliveries assigned to you yet. Contact your mess owner to assign zones.'
+                  : 'No deliveries match your search.'}
+              </p>
+            </CardContent>
+          </Card>
+        ) : (
+          filteredMembers.map((member) => (
+            <Card key={member.id} className="hover:shadow-md transition-shadow">
+              <CardContent className="p-4 space-y-3">
+                <div className="flex items-start justify-between">
+                  <div className="flex-1">
+                    <h3 className="font-medium">{member.name}</h3>
+                    <p className="text-sm text-muted-foreground flex items-center gap-1">
+                      <Phone className="h-3 w-3" />
+                      {member.phone}
+                    </p>
+                    {member.address && (
+                      <p className="text-sm text-muted-foreground flex items-center gap-1">
+                        <MapPin className="h-3 w-3" />
+                        {member.address}
                       </p>
                     )}
                   </div>
-                ))
-              )}
-            </CardContent>
-          </Card>
+                  <Badge {...getStatusBadge(member.delivery_status || 'pending')}>
+                    {member.delivery_status || 'pending'}
+                  </Badge>
+                </div>
+
+                {member.location_lat && member.location_lng && (
+                  <a
+                    href={`https://www.google.com/maps/dir/?api=1&destination=${member.location_lat},${member.location_lng}`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="flex items-center justify-center gap-2 w-full py-2 px-3 bg-primary/10 hover:bg-primary/20 rounded-lg text-primary text-sm font-medium transition-colors"
+                  >
+                    <MapPin className="h-4 w-4" />
+                    Navigate
+                  </a>
+                )}
+
+                {member.map_link && (
+                  <a
+                    href={member.map_link}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="flex items-center justify-center gap-2 w-full py-2 px-3 bg-muted hover:bg-muted/80 rounded-lg text-sm transition-colors"
+                  >
+                    <MapPin className="h-4 w-4" />
+                    View on Map
+                  </a>
+                )}
+              </CardContent>
+            </Card>
+          ))
         )}
       </main>
     </div>

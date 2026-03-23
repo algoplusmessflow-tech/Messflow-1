@@ -87,11 +87,10 @@ Currently allowed external domains in `connect-src`:
 | Table | Purpose | Key Columns |
 |-------|---------|-------------|
 | `profiles` | Business settings | business_name, tax_trn, map_api_key, map_api_provider, whatsapp_api_key |
-| `delivery_areas` | Named zones | name, description, owner_id |
+| `delivery_areas` | Named zones | name, description, owner_id, center_lat, center_lng, radius_km, driver_id |
 | `rice_options` | Custom rice types per owner | name, label, sort_order, owner_id |
 | `drivers` | Delivery drivers | name, phone, access_code, status |
-| `delivery_batches` | Grouped delivery runs | date, area_id, driver_id, status |
-| `batch_deliveries` | Individual deliveries | batch_id, member_id, status |
+| `driver_zone_mapping` | Driver-zone assignments | driver_id, zone_id, assigned_at (many-to-many) |
 | `invoices` | Invoice records | invoice_number, member_id, total_amount, status |
 | `transactions` | Payment/charge history | member_id, amount, type |
 

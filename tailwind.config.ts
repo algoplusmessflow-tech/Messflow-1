@@ -47,6 +47,10 @@ export default {
   				DEFAULT: 'hsl(var(--card))',
   				foreground: 'hsl(var(--card-foreground))'
   			},
+  			'glass-text': 'hsl(var(--glass-text))',
+  			'modal-title': 'hsl(var(--modal-title))',
+  			'modal-label': 'hsl(var(--modal-label))',
+  			'modal-input-text': 'hsl(var(--modal-input-text))',
   			sidebar: {
   				DEFAULT: 'hsl(var(--sidebar-background))',
   				foreground: 'hsl(var(--sidebar-foreground))',

@@ -1,5 +1,5 @@
 # MessFlow — Production Debug Checklist
-## Date: 2026-03-18
+## Date: 2026-03-23
 
 ### Critical Bugs
 - [x] **BUG-01**: `generateUUID is not defined` — Removed id: from inserts in DeliveryManagement.tsx
@@ -8,6 +8,16 @@
 - [x] **BUG-04**: Zone page crashes after save — try/catch on member count query
 - [x] **BUG-05**: Zone member count = 0 — Fixed in MASTER_MIGRATION (adds delivery_area_id column)
 - [x] **BUG-06**: Rice type creation failing — Fixed in MASTER_MIGRATION (RLS + GRANT)
+
+### Zone-Driver Assignment Refactor (2026-03-23)
+- [x] **REFACTOR-01**: Removed batch-based delivery system
+- [x] **REFACTOR-02**: Created driver_zone_mapping table (many-to-many relationship)
+- [x] **REFACTOR-03**: Added driver_id to delivery_areas for zone assignment
+- [x] **REFACTOR-04**: Refactored useDeliveryBatches.ts - removed batch hooks, added zone-driver mapping
+- [x] **REFACTOR-05**: Created MergeZonesModal for combining zones
+- [x] **REFACTOR-06**: Enhanced DeliveryZoneBox with merge functionality
+- [x] **REFACTOR-07**: Updated DeliveryManagement.tsx for zone-based system
+- [x] **REFACTOR-08**: Refactored DriverPortal.tsx to use zone-based deliveries
 
 ### Feature Enhancements
 - [x] **FEAT-01**: Meal type expanded — 6 options: lunch, dinner, both, breakfast, breakfast+lunch, all three
@@ -20,7 +30,7 @@
 ### ⚠️ USER ACTION REQUIRED
 Run this ONE file in Supabase SQL Editor:
 ```
-supabase/migrations/20260318_MASTER_MIGRATION.sql
+supabase/migrations/20260328_final_zone_driver_migration.sql
 ```
 Then regenerate types:
 ```
@@ -31,15 +41,10 @@ Then restart: `npm run dev`
 ### Files Modified This Session
 | File | Changes |
 |------|---------|
-| `src/pages/DeliveryManagement.tsx` | Removed generateUUID() calls |
-| `src/pages/DeliveryZones.tsx` | Error handling, location lookup with useMapConfig |
-| `src/pages/Members.tsx` | Meal type expanded, trial days, skip weekends descriptions |
-| `src/lib/geolocation.ts` | Multi-provider geocoding with Google JS Geocoder |
-| `src/hooks/useMapConfig.ts` | Map API config from profile |
-| `src/components/InlineAddSelect.tsx` | Reusable dropdown with inline add/edit |
-| `src/pages/Settings.tsx` | Map API save error handling |
-| `index.html` | CSP connect-src + script-src for geocoding APIs |
-| `.gsd/GSD.md` | Complete protocol documentation |
+| `src/hooks/useDeliveryBatches.ts` | Removed batch hooks, added zone-driver mapping hooks |
+| `src/pages/DeliveryManagement.tsx` | Zone-based system, removed batch references |
+| `src/pages/DriverPortal.tsx` | Refactored for zone-based deliveries |
+| `src/components/DeliveryZoneBox.tsx` | Added merge functionality |
+| `src/components/MergeZonesModal.tsx` | New component for merging zones |
+| `supabase/migrations/20260328_final_zone_driver_migration.sql` | Zone-driver assignment migration |
 | `.gsd/CHECKLIST.md` | This file |
-| `CLAUDE.md` | Root-level agent instructions |
-| `supabase/migrations/20260318_MASTER_MIGRATION.sql` | All-in-one migration |
