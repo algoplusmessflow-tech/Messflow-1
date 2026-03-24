@@ -295,3 +295,163 @@ export function extractCoordinatesFromInput(input: string): ParsedLocation | nul
 
   return null;
 }
+
+
+/**
+ * Ray-casting point-in-polygon test.
+ * Returns true if the point (lat, lng) is inside the polygon defined by vertices.
+ * Vertices are [[lat, lng], [lat, lng], ...]
+ */
+export function pointInPolygon(
+  lat: number,
+  lng: number,
+  polygon: [number, number][]
+): boolean {
+  let inside = false;
+  for (let i = 0, j = polygon.length - 1; i < polygon.length; j = i++) {
+    const yi = polygon[i][0], xi = polygon[i][1];
+    const yj = polygon[j][0], xj = polygon[j][1];
+    const intersect = ((yi > lat) !== (yj > lat)) &&
+      (lng < (xj - xi) * (lat - yi) / (yj - yi) + xi);
+    if (intersect) inside = !inside;
+  }
+  return inside;
+}
+
+/**
+ * Check if a member is within a zone (supports both radius and polygon modes).
+ */
+export function isMemberInZone(
+  memberLat: number,
+  memberLng: number,
+  zone: {
+    zone_mode?: string;
+    center_lat?: number | null;
+    center_lng?: number | null;
+    radius_km?: number | null;
+    boundary_polygon?: [number, number][] | null;
+  }
+): boolean {
+  if (zone.zone_mode === 'boundary' && zone.boundary_polygon && zone.boundary_polygon.length >= 3) {
+    return pointInPolygon(memberLat, memberLng, zone.boundary_polygon);
+  }
+  // Default: radius mode
+  if (zone.center_lat && zone.center_lng && zone.radius_km) {
+    return haversineDistance(memberLat, memberLng, zone.center_lat, zone.center_lng) <= zone.radius_km;
+  }
+  return false;
+}
+
+export interface Coordinates {
+  lat: number;
+  lng: number;
+}
+
+export interface GeolocationResult {
+  coords: Coordinates;
+  accuracy: number;
+  timestamp: number;
+}
+
+export interface LocationValidationResult {
+  isWithinPerimeter: boolean;
+  distanceKm: number;
+  thresholdKm: number;
+  memberCoords: Coordinates | null;
+  driverCoords: Coordinates | null;
+}
+
+export async function getCurrentLocation(): Promise<GeolocationResult> {
+  return new Promise((resolve, reject) => {
+    if (!navigator.geolocation) {
+      reject(new Error('Geolocation is not supported by this browser'));
+      return;
+    }
+
+    navigator.geolocation.getCurrentPosition(
+      (position) => {
+        resolve({
+          coords: {
+            lat: position.coords.latitude,
+            lng: position.coords.longitude,
+          },
+          accuracy: position.coords.accuracy,
+          timestamp: position.timestamp,
+        });
+      },
+      (error) => {
+        let message = 'Unable to retrieve location';
+        switch (error.code) {
+          case error.PERMISSION_DENIED:
+            message = 'Location permission denied. Please enable location access.';
+            break;
+          case error.POSITION_UNAVAILABLE:
+            message = 'Location information is unavailable.';
+            break;
+          case error.TIMEOUT:
+            message = 'Location request timed out.';
+            break;
+        }
+        reject(new Error(message));
+      },
+      {
+        enableHighAccuracy: true,
+        timeout: 10000,
+        maximumAge: 0,
+      }
+    );
+  });
+}
+
+export function checkLocationWithinPerimeter(
+  driverCoords: Coordinates,
+  memberCoords: Coordinates | null,
+  thresholdKm: number = 0.5
+): LocationValidationResult {
+  if (!memberCoords) {
+    return {
+      isWithinPerimeter: false,
+      distanceKm: 0,
+      thresholdKm,
+      memberCoords: null,
+      driverCoords,
+    };
+  }
+
+  const distanceKm = haversineDistance(
+    driverCoords.lat,
+    driverCoords.lng,
+    memberCoords.lat,
+    memberCoords.lng
+  );
+
+  return {
+    isWithinPerimeter: distanceKm <= thresholdKm,
+    distanceKm,
+    thresholdKm,
+    memberCoords,
+    driverCoords,
+  };
+}
+
+export function formatDistance(km: number): string {
+  if (km < 1) {
+    return `${Math.round(km * 1000)} m`;
+  }
+  return `${km.toFixed(2)} km`;
+}
+
+export function isValidLatLng(lat: number, lng: number): boolean {
+  return !isNaN(lat) && !isNaN(lng) && lat >= -90 && lat <= 90 && lng >= -180 && lng <= 180;
+}
+
+export function getLocationPermissionStatus(): Promise<PermissionState> {
+  if (!navigator.permissions) {
+    return Promise.resolve('prompt');
+  }
+
+  return navigator.permissions
+    .query({ name: 'geolocation' })
+    .then((result) => result.state)
+    .catch(() => 'prompt');
+}

@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { AppLayout } from '@/components/AppLayout';
 import { GlassCard, GlassCardContent, GlassCardHeader, GlassCardTitle, GlassCardDescription } from '@/components/ui/glass-card';
 import { Button } from '@/components/ui/button';
@@ -11,10 +11,11 @@ import { useSalesPersons, useDeletionRequests } from '@/hooks/useSalesPerson';
 import { useProfile } from '@/hooks/useProfile';
 import { generateSlug } from '@/lib/slug';
 import { toast } from 'sonner';
-import { Plus, Users, Trash2, Edit2, Copy, RefreshCw, Check, X, AlertTriangle, Loader2 } from 'lucide-react';
+import { Plus, Users, Trash2, Edit2, Copy, RefreshCw, Check, X, AlertTriangle, Loader2, KeyRound } from 'lucide-react';
+import { supabase } from '@/integrations/supabase/client';
 
 export default function SalesManagement() {
-  const { salesPersons, isLoading, error, addSalesPerson, updateSalesPerson, deleteSalesPerson, toggleSalesPersonStatus, regenerateAccessToken } = useSalesPersons();
+  const { salesPersons, isLoading, addSalesPerson, updateSalesPerson, deleteSalesPerson, toggleSalesPersonStatus, regenerateAccessToken } = useSalesPersons();
   const { deletionRequests, pendingRequests, approveDeletion, rejectDeletion } = useDeletionRequests();
   const { profile } = useProfile();
   
@@ -25,15 +26,34 @@ export default function SalesManagement() {
   const [copiedToken, setCopiedToken] = useState<string | null>(null);
   const [showTokens, setShowTokens] = useState<Record<string, string>>({});
   const [isDeleteRequestOpen, setIsDeleteRequestOpen] = useState(false);
+  const [salesCustomerCounts, setSalesCustomerCounts] = useState<Record<string, number>>({});
 
   const handleAdd = async () => {
     if (!formData.name) {
       toast.error('Name is required');
       return;
     }
-    await addSalesPerson.mutateAsync(formData);
-    setIsAddOpen(false);
-    setFormData({ name: '', email: '', phone: '' });
+    
+    // Validate phone format if provided
+    if (formData.phone && !/^\+?[0-9]{7,15}$/.test(formData.phone.replace(/[\s\-()]/g, ''))) {
+      toast.error('Please enter a valid phone number (7-15 digits)');
+      return;
+    }
+    
+    // Validate email format if provided
+    if (formData.email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(formData.email)) {
+      toast.error('Please enter a valid email address');
+      return;
+    }
+    
+    try {
+      await addSalesPerson.mutateAsync(formData);
+      setIsAddOpen(false);
+      setFormData({ name: '', email: '', phone: '' });
+    } catch (error: any) {
+      console.error('Error adding sales person:', error);
+      // Don't show duplicate toast since hook already shows error
+    }
   };
 
   const handleEdit = async () => {
@@ -56,7 +76,26 @@ export default function SalesManagement() {
     setShowTokens(prev => ({ ...prev, [id]: newToken }));
   };
 
-  const businessSlug = profile?.business_slug || generateSlug(profile?.business_name || 'mess');
+  // Fetch customer counts for each sales person
+  useEffect(() => {
+    const fetchCustomerCounts = async () => {
+      if (salesPersons.length === 0) return;
+      
+      const counts: Record<string, number> = {};
+      for (const sp of salesPersons) {
+        const { count } = await supabase
+          .from('members')
+          .select('*', { count: 'exact', head: true })
+          .eq('sales_person_id', sp.id);
+        counts[sp.id] = count || 0;
+      }
+      setSalesCustomerCounts(counts);
+    };
+
+    fetchCustomerCounts();
+  }, [salesPersons]);
+
+  const businessSlug = profile?.business_slug || profile?.business_name || 'mess';
   
   const getSalesPersonLink = (token: string) => {
     const appUrl = import.meta.env.VITE_APP_URL || 'https://messflow.app';
@@ -163,31 +202,50 @@ export default function SalesManagement() {
                   </GlassCardDescription>
                 </GlassCardHeader>
                 <GlassCardContent className="space-y-4">
+                  {/* Access Code Section */}
                   <div className="space-y-2">
-                    <Label className="text-xs">Access Link</Label>
+                    <Label className="text-xs font-semibold text-indigo-700 flex items-center gap-1">
+                      <KeyRound className="h-3 w-3" />
+                      Access Code
+                    </Label>
                     <div className="flex gap-2">
                       <Input
                         readOnly
-                        value={getSalesPersonLink(sp.access_token)}
-                        className="bg-muted/50 font-mono text-xs"
+                        value={showTokens[sp.id] || sp.access_token}
+                        className="bg-gradient-to-r from-indigo-50 to-purple-50 font-mono text-sm border-2 border-indigo-200 font-semibold tracking-wide"
                       />
                       <Button 
                         variant="outline" 
                         size="icon"
-                        onClick={() => handleCopyToken(sp.id, sp.access_token)}
+                        onClick={() => handleCopyToken(sp.id, showTokens[sp.id] || sp.access_token)}
+                        className="border-2 border-indigo-200 hover:bg-indigo-50"
                       >
-                        {copiedToken === sp.id ? <Check className="h-4 w-4 text-green-500" /> : <Copy className="h-4 w-4" />}
+                        {copiedToken === sp.id ? <Check className="h-4 w-4 text-green-600" /> : <Copy className="h-4 w-4" />}
                       </Button>
                     </div>
+                    <p className="text-[10px] text-gray-600">
+                      Share this 6-character code with the sales person for login
+                    </p>
                   </div>
-                  
+                
+                  {/* Customer Count Badge */}
+                  <div className="flex items-center justify-between p-3 bg-gradient-to-r from-blue-50 to-indigo-50 rounded-lg border-2 border-blue-200">
+                    <div className="flex items-center gap-2">
+                      <Users className="h-4 w-4 text-blue-600" />
+                      <span className="text-sm font-bold text-gray-900">Customers Added</span>
+                    </div>
+                    <Badge className="bg-blue-600 text-white font-bold px-3 py-1">
+                      {salesCustomerCounts[sp.id] || 0}
+                    </Badge>
+                  </div>
+                          
                   <div className="flex items-center justify-between">
                     <div className="flex items-center gap-2">
                       <Switch
                         checked={sp.is_active}
                         onCheckedChange={(checked) => toggleSalesPersonStatus.mutate({ id: sp.id, isActive: checked })}
                       />
-                      <Label className="text-sm">Active</Label>
+                      <Label className="text-sm font-semibold">Active</Label>
                     </div>
                     <div className="flex gap-1">
                       <Button 

@@ -14,6 +14,10 @@ export type Staff = Database['public']['Tables']['staff']['Row'];
 export type StaffInsert = Database['public']['Tables']['staff']['Insert'];
 export type StaffUpdate = Database['public']['Tables']['staff']['Update'];
 
+export type DeliveryCompletion = Database['public']['Tables']['delivery_completions']['Row'];
+export type DeliveryCompletionInsert = Database['public']['Tables']['delivery_completions']['Insert'];
+export type DeliveryCompletionUpdate = Database['public']['Tables']['delivery_completions']['Update'];
+
 export type Database = {
   // Allows to automatically instantiate createClient with right options
   // instead of createClient<Database, { PostgrestVersion: 'XX' }>(URL, KEY)
@@ -458,6 +462,7 @@ export type Database = {
       profiles: {
         Row: {
           business_name: string
+          business_slug: string | null
           company_address: string | null
           company_logo_url: string | null
           created_at: string
@@ -484,6 +489,7 @@ export type Database = {
         }
         Insert: {
           business_name: string
+          business_slug?: string | null
           company_address?: string | null
           company_logo_url?: string | null
           created_at?: string
@@ -510,6 +516,7 @@ export type Database = {
         }
         Update: {
           business_name?: string
+          business_slug?: string | null
           company_address?: string | null
           company_logo_url?: string | null
           created_at?: string
@@ -535,6 +542,179 @@ export type Database = {
           whatsapp_api_key?: string | null
         }
         Relationships: []
+      }
+      sales_persons: {
+        Row: {
+          access_token: string
+          created_at: string
+          email: string | null
+          id: string
+          is_active: boolean
+          name: string
+          owner_id: string
+          phone: string | null
+          updated_at: string
+        }
+        Insert: {
+          access_token: string
+          created_at?: string
+          email?: string | null
+          id?: string
+          is_active?: boolean
+          name: string
+          owner_id: string
+          phone?: string | null
+          updated_at?: string
+        }
+        Update: {
+          access_token?: string
+          created_at?: string
+          email?: string | null
+          id?: string
+          is_active?: boolean
+          name?: string
+          owner_id?: string
+          phone?: string | null
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "sales_persons_owner_id_fkey"
+            columns: ["owner_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["user_id"]
+          },
+        ]
+      }
+      deletion_requests: {
+        Row: {
+          created_at: string
+          id: string
+          member_id: string
+          notes: string | null
+          owner_id: string
+          requested_at: string
+          resolved_at: string | null
+          resolved_by: string | null
+          sales_person_id: string
+          status: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          member_id: string
+          notes?: string | null
+          owner_id: string
+          requested_at?: string
+          resolved_at?: string | null
+          resolved_by?: string | null
+          sales_person_id: string
+          status?: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          member_id?: string
+          notes?: string | null
+          owner_id?: string
+          requested_at?: string
+          resolved_at?: string | null
+          resolved_by?: string | null
+          sales_person_id?: string
+          status?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "deletion_requests_member_id_fkey"
+            columns: ["member_id"]
+            isOneToOne: false
+            referencedRelation: "members"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "deletion_requests_sales_person_id_fkey"
+            columns: ["sales_person_id"]
+            isOneToOne: false
+            referencedRelation: "sales_persons"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      delivery_completions: {
+        Row: {
+          completed_at: string
+          created_at: string
+          delivery_date: string
+          driver_id: string
+          id: string
+          location_lat: number | null
+          location_lng: number | null
+          location_match_distance_km: number | null
+          location_match_threshold_km: number
+          location_matched: boolean
+          member_id: string
+          notes: string | null
+          owner_id: string
+          proof_photo_size: number | null
+          proof_photo_url: string | null
+          status: string
+          updated_at: string
+        }
+        Insert: {
+          completed_at?: string
+          created_at?: string
+          delivery_date?: string
+          driver_id: string
+          id?: string
+          location_lat?: number | null
+          location_lng?: number | null
+          location_match_distance_km?: number | null
+          location_match_threshold_km?: number
+          location_matched?: boolean
+          member_id: string
+          notes?: string | null
+          owner_id: string
+          proof_photo_size?: number | null
+          proof_photo_url?: string | null
+          status?: string
+          updated_at?: string
+        }
+        Update: {
+          completed_at?: string
+          created_at?: string
+          delivery_date?: string
+          driver_id?: string
+          id?: string
+          location_lat?: number | null
+          location_lng?: number | null
+          location_match_distance_km?: number | null
+          location_match_threshold_km?: number
+          location_matched?: boolean
+          member_id?: string
+          notes?: string | null
+          owner_id?: string
+          proof_photo_size?: number | null
+          proof_photo_url?: string | null
+          status?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "delivery_completions_member_id_fkey"
+            columns: ["member_id"]
+            isOneToOne: false
+            referencedRelation: "members"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "delivery_completions_driver_id_fkey"
+            columns: ["driver_id"]
+            isOneToOne: false
+            referencedRelation: "drivers"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       promo_code_assignments: {
         Row: {

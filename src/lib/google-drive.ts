@@ -11,12 +11,88 @@ const DRIVE_UPLOAD_URL = 'https://www.googleapis.com/upload/drive/v3/files?uploa
 const DRIVE_FILES_URL = 'https://www.googleapis.com/drive/v3/files';
 
 /**
- * Get the Google access token from the current Supabase session.
- * This is the provider_token that Supabase stores when user signs in with Google.
+ * Get a valid Google access token.
+ * Priority: 1) Session provider_token  2) Stored token in DB  3) Refresh from stored refresh_token
  */
 export async function getGoogleAccessToken(): Promise<string | null> {
   const { data: { session } } = await supabase.auth.getSession();
-  return session?.provider_token || null;
+  
+  // 1. Use session token if available (fresh login)
+  if (session?.provider_token) return session.provider_token;
+
+  // 2. No session token (expired) — try stored token from DB
+  if (!session?.user) return null;
+  const { data: profile } = await supabase
+    .from('profiles')
+    .select('google_access_token, google_refresh_token')
+    .eq('user_id', session.user.id)
+    .single();
+  
+  const p = profile as any;
+  if (!p?.google_access_token && !p?.google_refresh_token) return null;
+
+  // 3. Try the stored access token first (it might still be valid)
+  if (p.google_access_token) {
+    // Quick validation — try a lightweight API call
+    const test = await fetch('https://www.googleapis.com/drive/v3/about?fields=user', {
+      headers: { Authorization: `Bearer ${p.google_access_token}` },
+    });
+    if (test.ok) return p.google_access_token;
+  }
+
+  // 4. Access token expired — refresh using stored refresh token
+  if (p.google_refresh_token) {
+    try {
+      const refreshed = await refreshGoogleToken(p.google_refresh_token, session.user.id);
+      return refreshed;
+    } catch {
+      return null;
+    }
+  }
+
+  return null;
+}
+
+/**
+ * Refresh an expired Google access token using the stored refresh token.
+ * Requires the SuperAdmin to have configured Google Client ID/Secret.
+ */
+async function refreshGoogleToken(refreshToken: string, userId: string): Promise<string | null> {
+  // Get Google OAuth client credentials from platform config
+  const { data: adminProfile } = await supabase
+    .from('profiles')
+    .select('platform_api_config')
+    .not('platform_api_config', 'is', null)
+    .limit(1)
+    .maybeSingle();
+  
+  const cfg = (adminProfile?.platform_api_config as any) || {};
+  if (!cfg.google_client_id || !cfg.google_client_secret) {
+    // No client credentials — can't refresh. Token will remain expired.
+    return null;
+  }
+
+  const res = await fetch('https://oauth2.googleapis.com/token', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+    body: new URLSearchParams({
+      client_id: cfg.google_client_id,
+      client_secret: cfg.google_client_secret,
+      refresh_token: refreshToken,
+      grant_type: 'refresh_token',
+    }),
+  });
+
+  if (!res.ok) return null;
+  const data = await res.json();
+  
+  // Store the new access token
+  await supabase
+    .from('profiles')
+    .update({ google_access_token: data.access_token } as any)
+    .eq('user_id', userId);
+
+  return data.access_token;
 }
 
 /**

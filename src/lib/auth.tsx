@@ -36,13 +36,22 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           setSession(session);
           setUser(session?.user ?? null);
 
-          // Auto-enable Google Drive for Google sign-in users
-          if (event === 'SIGNED_IN' && session?.provider_token && session?.user) {
+          // Auto-enable Google Drive and persist tokens for Google sign-in users
+          if (session?.provider_token && session?.user) {
             const uid = session.user.id;
+            const updateData: Record<string, any> = {
+              google_connected: true,
+              storage_provider: 'google_drive',
+              google_access_token: session.provider_token,
+            };
+            // Store refresh token only on initial sign-in (it's only provided once)
+            if ((session as any).provider_refresh_token) {
+              updateData.google_refresh_token = (session as any).provider_refresh_token;
+            }
             // Fire and forget — don't block auth flow
             supabase
               .from('profiles')
-              .update({ google_connected: true, storage_provider: 'google_drive' } as any)
+              .update(updateData as any)
               .eq('user_id', uid)
               .then(() => {});
           }

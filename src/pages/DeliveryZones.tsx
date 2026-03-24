@@ -21,7 +21,8 @@ import {
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/lib/auth';
 import { useMapConfig } from '@/hooks/useMapConfig';
-import { fetchLocationFromAddress, haversineDistance, generateEmbedUrl } from '@/lib/geolocation';
+import { fetchLocationFromAddress, haversineDistance, pointInPolygon, isMemberInZone } from '@/lib/geolocation';
+import LeafletZoneMap from '@/components/LeafletZoneMap';
 import { toast } from 'sonner';
 import { Plus, Pencil, Trash2, MapPin, Loader2, Users, Search, X, Navigation, Radius, UserCheck, Truck } from 'lucide-react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
@@ -34,6 +35,8 @@ type DeliveryZone = {
   center_lat: number | null;
   center_lng: number | null;
   radius_km: number | null;
+  zone_mode: string | null;
+  boundary_polygon: [number, number][] | null;
   driver_id: string | null;
   created_at: string;
   updated_at: string;
@@ -69,6 +72,8 @@ export default function DeliveryZones() {
     name: '', description: '', locationQuery: '',
     center_lat: null as number | null, center_lng: null as number | null,
     radius_km: 5,
+    zone_mode: 'radius' as string,
+    boundary_polygon: [] as [number, number][],
   });
   const [isFetchingLocation, setIsFetchingLocation] = useState(false);
   const [locationResult, setLocationResult] = useState<string | null>(null);
@@ -82,16 +87,30 @@ export default function DeliveryZones() {
     queryKey: ['delivery-zones', user?.id],
     queryFn: async () => {
       if (!user) return [];
-      const areasResult = await supabase
+      // Try join query first, fall back to simple if driver FK doesn't exist
+      let areasResult = await supabase
         .from('delivery_areas')
         .select('*, driver:drivers(id, name, phone)')
         .eq('owner_id', user.id)
         .order('name');
-      if (areasResult.error) throw areasResult.error;
+      
+      if (areasResult.error) {
+        // Fallback: query without driver join
+        areasResult = await supabase
+          .from('delivery_areas')
+          .select('*')
+          .eq('owner_id', user.id)
+          .order('name') as any;
+        if (areasResult.error) throw areasResult.error;
+        return (areasResult.data || []).map((zone: any) => ({
+          ...zone,
+          driver: null,
+        })) as DeliveryZone[];
+      }
       
       return (areasResult.data || []).map((zone: any) => ({
         ...zone,
-        driver: zone.driver?.[0] || null,
+        driver: Array.isArray(zone.driver) ? zone.driver[0] || null : zone.driver || null,
       })) as DeliveryZone[];
     },
     enabled: !!user,
@@ -122,7 +141,7 @@ export default function DeliveryZones() {
       try {
         const { data } = await supabase
           .from('members')
-          .select('id, name, phone, status, delivery_area_id, location_lat, location_lng' as any)
+          .select('id, name, phone, status, delivery_area_id, location_lat, location_lng')
           .eq('owner_id', user.id)
           .eq('status', 'active');
         return (data || []) as unknown as MemberGeo[];
@@ -137,10 +156,12 @@ export default function DeliveryZones() {
     return zones.map((zone) => {
       const assigned = allMembers.filter((m) => m.delivery_area_id === zone.id).length;
       let inRadius = 0;
-      if (zone.center_lat && zone.center_lng && zone.radius_km) {
+      const hasZoneGeo = (zone.center_lat && zone.center_lng && zone.radius_km) ||
+        ((zone as any).zone_mode === 'boundary' && (zone as any).boundary_polygon?.length >= 3);
+      if (hasZoneGeo) {
         inRadius = allMembers.filter((m) => {
           if (!m.location_lat || !m.location_lng) return false;
-          return haversineDistance(m.location_lat, m.location_lng, zone.center_lat!, zone.center_lng!) <= zone.radius_km!;
+          return isMemberInZone(m.location_lat, m.location_lng, zone as any);
         }).length;
       }
       return { ...zone, member_count: assigned, members_in_radius: inRadius };
@@ -178,26 +199,42 @@ export default function DeliveryZones() {
 
   // Members within the current form's radius (preview)
   const previewMembersInRadius = useMemo(() => {
+    // Boundary mode: use point-in-polygon
+    if (formData.zone_mode === 'boundary' && formData.boundary_polygon.length >= 3) {
+      return allMembers.filter((m) => {
+        if (!m.location_lat || !m.location_lng) return false;
+        return pointInPolygon(m.location_lat, m.location_lng, formData.boundary_polygon);
+      });
+    }
+    // Radius mode: use haversine distance
     if (!formData.center_lat || !formData.center_lng) return [];
     return allMembers.filter((m) => {
       if (!m.location_lat || !m.location_lng) return false;
       return haversineDistance(m.location_lat, m.location_lng, formData.center_lat!, formData.center_lng!) <= formData.radius_km;
     });
-  }, [allMembers, formData.center_lat, formData.center_lng, formData.radius_km]);
+  }, [allMembers, formData.center_lat, formData.center_lng, formData.radius_km, formData.zone_mode, formData.boundary_polygon]);
 
   const addZone = useMutation({
     mutationFn: async (data: typeof formData) => {
       if (!user) throw new Error('Not authenticated');
+      // Check for duplicate zone name (case-insensitive)
+      const nameToCheck = data.name.trim().toLowerCase();
+      const duplicate = zones.find((z) => z.name.toLowerCase() === nameToCheck);
+      if (duplicate) throw new Error(`Zone "${duplicate.name}" already exists. Use a unique name.`);
+
       const { data: zone, error } = await supabase
         .from('delivery_areas')
-        .insert({
-          owner_id: user.id,
-          name: data.name.trim(),
-          description: data.description.trim() || null,
-          center_lat: data.center_lat,
-          center_lng: data.center_lng,
-          radius_km: data.radius_km,
-        } as any)
+          .insert({
+            owner_id: user.id,
+            name: data.name.trim(),
+            description: data.description.trim() || null,
+            center_lat: data.center_lat,
+            center_lng: data.center_lng,
+            radius_km: data.radius_km,
+            zone_mode: data.zone_mode || 'radius',
+            boundary_polygon:
+              data.boundary_polygon?.length >= 3 ? data.boundary_polygon : null,
+          })
         .select()
         .single();
       if (error) throw error;
@@ -214,15 +251,22 @@ export default function DeliveryZones() {
 
   const updateZone = useMutation({
     mutationFn: async (data: typeof formData & { id: string }) => {
+      // Check for duplicate zone name (case-insensitive, exclude self)
+      const nameToCheck = data.name.trim().toLowerCase();
+      const duplicate = zones.find((z) => z.id !== data.id && z.name.toLowerCase() === nameToCheck);
+      if (duplicate) throw new Error(`Zone "${duplicate.name}" already exists. Use a unique name.`);
+
       const { error } = await supabase
         .from('delivery_areas')
-        .update({
-          name: data.name.trim(),
-          description: data.description.trim() || null,
-          center_lat: data.center_lat,
-          center_lng: data.center_lng,
-          radius_km: data.radius_km,
-        } as any)
+          .update({
+            name: data.name.trim(),
+            description: data.description.trim() || null,
+            center_lat: data.center_lat,
+            center_lng: data.center_lng,
+            radius_km: data.radius_km,
+            zone_mode: data.zone_mode || 'radius',
+            boundary_polygon: data.boundary_polygon?.length >= 3 ? data.boundary_polygon : null,
+          } as any)
         .eq('id', data.id);
       if (error) throw error;
     },
@@ -252,7 +296,7 @@ export default function DeliveryZones() {
     mutationFn: async ({ zoneId, driverId }: { zoneId: string; driverId: string | null }) => {
       const { error } = await supabase
         .from('delivery_areas')
-        .update({ driver_id: driverId } as any)
+          .update({ driver_id: driverId })
         .eq('id', zoneId);
       if (error) throw error;
     },
@@ -267,8 +311,10 @@ export default function DeliveryZones() {
 
   // Auto-assign members within radius to this zone
   const handleAutoAssign = async (zone: DeliveryZone) => {
-    if (!zone.center_lat || !zone.center_lng || !zone.radius_km) {
-      toast.error('Set zone center and radius first');
+    const hasRadius = zone.center_lat && zone.center_lng && zone.radius_km;
+    const hasBoundary = zone.zone_mode === 'boundary' && zone.boundary_polygon && zone.boundary_polygon.length >= 3;
+    if (!hasRadius && !hasBoundary) {
+      toast.error('Set zone center/radius or draw a boundary first');
       return;
     }
     setIsAutoAssigning(true);
@@ -276,7 +322,7 @@ export default function DeliveryZones() {
       const membersInRadius = allMembers.filter((m) => {
         if (!m.location_lat || !m.location_lng) return false;
         if (m.delivery_area_id === zone.id) return false; // already assigned
-        return haversineDistance(m.location_lat, m.location_lng, zone.center_lat!, zone.center_lng!) <= zone.radius_km!;
+        return isMemberInZone(m.location_lat, m.location_lng, zone);
       });
 
       if (membersInRadius.length === 0) {
@@ -287,7 +333,7 @@ export default function DeliveryZones() {
       const ids = membersInRadius.map((m) => m.id);
       const { error } = await supabase
         .from('members')
-        .update({ delivery_area_id: zone.id } as any)
+          .update({ delivery_area_id: zone.id })
         .in('id', ids);
 
       if (error) throw error;
@@ -303,24 +349,25 @@ export default function DeliveryZones() {
     }
   };
 
-  const openEdit = (zone: DeliveryZone) => {
-    setSelectedZone(zone);
-    const z = zone as any;
-    setFormData({
-      name: z.name,
-      description: z.description || '',
-      locationQuery: '',
-      center_lat: z.center_lat || null,
-      center_lng: z.center_lng || null,
-      radius_km: z.radius_km || 5,
-    });
-    setLocationResult(z.center_lat ? `(${z.center_lat.toFixed(4)}, ${z.center_lng.toFixed(4)})` : null);
-    setLocationError('');
-    setIsEditOpen(true);
-  };
+    const openEdit = (zone: DeliveryZone) => {
+      setSelectedZone(zone);
+      setFormData({
+        name: zone.name,
+        description: zone.description || '',
+        locationQuery: '',
+        center_lat: zone.center_lat || null,
+        center_lng: zone.center_lng || null,
+        radius_km: zone.radius_km || 5,
+        zone_mode: zone.zone_mode || 'radius',
+        boundary_polygon: zone.boundary_polygon || [],
+      });
+      setLocationResult(zone.center_lat ? `(${zone.center_lat.toFixed(4)}, ${zone.center_lng.toFixed(4)})` : null);
+      setLocationError('');
+      setIsEditOpen(true);
+    };
 
   const resetForm = () => {
-    setFormData({ name: '', description: '', locationQuery: '', center_lat: null, center_lng: null, radius_km: 5 });
+    setFormData({ name: '', description: '', locationQuery: '', center_lat: null, center_lng: null, radius_km: 5, zone_mode: 'radius', boundary_polygon: [] });
     setLocationResult(null);
     setLocationError('');
   };
@@ -370,7 +417,8 @@ export default function DeliveryZones() {
 
       {formData.center_lat && formData.center_lng && (
         <>
-          <div className="space-y-3">
+          {/* Radius controls — only in radius mode */}
+          {formData.zone_mode === 'radius' && <div className="space-y-3">
             <div className="flex items-center justify-between">
               <Label>Delivery Radius</Label>
               <div className="flex items-center gap-1.5">
@@ -403,13 +451,13 @@ export default function DeliveryZones() {
               <span>25 km</span>
               <span>50 km</span>
             </div>
-          </div>
+          </div>}
 
-          {/* Preview: members in radius */}
+          {/* Preview: members in zone */}
           <div className="p-3 rounded-lg border bg-muted/30 space-y-2">
             <div className="flex items-center justify-between">
               <span className="text-sm font-medium flex items-center gap-1">
-                <Users className="h-3.5 w-3.5" /> Members in radius
+                <Users className="h-3.5 w-3.5" /> {formData.zone_mode === 'boundary' ? 'Members in boundary' : 'Members in radius'}
               </span>
               <Badge variant={previewMembersInRadius.length > 0 ? 'default' : 'secondary'}>
                 {previewMembersInRadius.length}
@@ -435,14 +483,44 @@ export default function DeliveryZones() {
             )}
           </div>
 
-          {/* Map embed */}
-          <div className="rounded-lg overflow-hidden border h-40">
-            <iframe
-              src={generateEmbedUrl(formData.center_lat, formData.center_lng, mapConfig)}
-              width="100%" height="100%" style={{ border: 0 }}
-              loading="lazy" title="Zone center"
-            />
+          {/* Zone Mode Toggle */}
+          <div className="flex gap-2 mb-2">
+            <Button type="button" size="sm" variant={formData.zone_mode === 'radius' ? 'default' : 'outline'} 
+              onClick={() => setFormData({...formData, zone_mode: 'radius', boundary_polygon: []})}>
+              <Radius className="h-3 w-3 mr-1" /> Radius
+            </Button>
+            <Button type="button" size="sm" variant={formData.zone_mode === 'boundary' ? 'default' : 'outline'}
+              onClick={() => setFormData({...formData, zone_mode: 'boundary'})}>
+              <MapPin className="h-3 w-3 mr-1" /> Boundary
+            </Button>
+            {formData.zone_mode === 'boundary' && formData.boundary_polygon.length > 0 && (
+              <Button type="button" size="sm" variant="ghost" onClick={() => setFormData({...formData, boundary_polygon: []})}>
+                Clear Points
+              </Button>
+            )}
           </div>
+          {formData.zone_mode === 'boundary' && (
+            <p className="text-[10px] text-muted-foreground">
+              Click on the map to draw boundary points. Place at least 3 points to form a polygon.
+              {formData.boundary_polygon.length > 0 && ` (${formData.boundary_polygon.length} points placed)`}
+            </p>
+          )}
+          {formData.zone_mode === 'radius' && (
+            <p className="text-[10px] text-muted-foreground">Click on the map to set the zone center. Drag the red marker to adjust.</p>
+          )}
+
+          <LeafletZoneMap
+            mode={formData.zone_mode as 'radius' | 'boundary'}
+            center={formData.center_lat && formData.center_lng ? [formData.center_lat, formData.center_lng] : null}
+            radiusKm={formData.radius_km}
+            polygon={formData.boundary_polygon}
+            members={(allMembers || []).filter((m: any) => m.location_lat && m.location_lng).map((m: any) => ({ lat: m.location_lat, lng: m.location_lng, name: m.name }))}
+            onCenterChange={(lat, lng) => setFormData({...formData, center_lat: lat, center_lng: lng})}
+            onPolygonChange={(verts) => setFormData({...formData, boundary_polygon: verts})}
+            mapProvider={mapConfig.provider}
+            apiKey={mapConfig.apiKey}
+            height="300px"
+          />
         </>
       )}
 
@@ -586,8 +664,8 @@ export default function DeliveryZones() {
         </div>
 
         {/* Add Zone Dialog */}
-        <Dialog open={isAddOpen} onOpenChange={setIsAddOpen}>
-          <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto">
+        <Dialog open={isAddOpen} onOpenChange={(open) => { if (!open) return; setIsAddOpen(open); }}>
+          <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto" onPointerDownOutside={(e) => e.preventDefault()} onInteractOutside={(e) => e.preventDefault()}>
             <DialogHeader>
               <DialogTitle>Add Delivery Zone</DialogTitle>
             </DialogHeader>
@@ -605,8 +683,8 @@ export default function DeliveryZones() {
         </Dialog>
 
         {/* Edit Zone Dialog */}
-        <Dialog open={isEditOpen} onOpenChange={setIsEditOpen}>
-          <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto">
+        <Dialog open={isEditOpen} onOpenChange={(open) => { if (!open) return; setIsEditOpen(open); }}>
+          <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto" onPointerDownOutside={(e) => e.preventDefault()} onInteractOutside={(e) => e.preventDefault()}>
             <DialogHeader>
               <DialogTitle>Edit Zone</DialogTitle>
             </DialogHeader>

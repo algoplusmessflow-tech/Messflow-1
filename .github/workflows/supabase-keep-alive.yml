@@ -1,0 +1,24 @@
+name: Supabase Keep-Alive
+
+on:
+  schedule:
+    # Run every 3 days at 6:00 AM UTC
+    - cron: '0 6 */3 * *'
+  workflow_dispatch: # Allow manual trigger
+
+jobs:
+  ping-supabase:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Ping Supabase to prevent deep sleep
+        run: |
+          response=$(curl -s -o /dev/null -w "%{http_code}" \
+            -H "apikey: ${{ secrets.SUPABASE_ANON_KEY }}" \
+            -H "Authorization: Bearer ${{ secrets.SUPABASE_ANON_KEY }}" \
+            "${{ secrets.SUPABASE_URL }}/rest/v1/profiles?select=id&limit=1")
+          echo "Response code: $response"
+          if [ "$response" != "200" ]; then
+            echo "::warning::Supabase ping returned $response"
+          else
+            echo "Supabase is alive!"
+          fi

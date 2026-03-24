@@ -164,7 +164,18 @@ export async function backupMembersToSheets(userId: string): Promise<{
   const accessToken = await getGoogleAccessToken();
   if (!accessToken) throw new Error('Google not connected. Sign in with Google first.');
 
-  const spreadsheetId = await getOrCreateBackupSheet(accessToken, userId);
+  let spreadsheetId: string;
+  try {
+    spreadsheetId = await getOrCreateBackupSheet(accessToken, userId);
+  } catch (err: any) {
+    const msg = err?.message || '';
+    if (msg.includes('not been used in project') || msg.includes('is disabled')) {
+      throw new Error(
+        'Google Sheets API is not enabled. Go to Google Cloud Console → APIs & Services → Enable "Google Sheets API". Then retry.'
+      );
+    }
+    throw err;
+  }
 
   // Fetch members (ONLY this user's members — not SuperAdmin data)
   const { data: members, error } = await supabase

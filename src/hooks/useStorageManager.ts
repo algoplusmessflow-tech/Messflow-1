@@ -12,9 +12,14 @@ export function useStorageManager() {
   const queryClient = useQueryClient();
 
   const storageUsed = profile?.storage_used || 0;
-  // Force 2.5GB limit for all plans
-  const MAX_STORAGE = 2684354560; // 2.5GB in bytes
-  const storageLimit = MAX_STORAGE;
+  // Storage limits by plan: Free=100MB, Pro=250MB
+  const STORAGE_LIMITS: Record<string, number> = {
+    free: 104857600,         // 100 MB
+    professional: 262144000, // 250 MB
+    enterprise: 1073741824,  // 1 GB
+  };
+  const planType = (profile as any)?.plan_type || 'free';
+  const storageLimit = STORAGE_LIMITS[planType] || STORAGE_LIMITS.free;
 
   const formatBytes = (bytes: number): string => {
     if (bytes === 0) return '0 Bytes';

@@ -33,6 +33,8 @@ type Invoice = {
   due_date: string | null;
   paid_date: string | null;
   created_at: string;
+  source?: string;
+  customer_phone?: string;
   member?: {
     id: string;
     name: string;
@@ -340,6 +342,16 @@ export default function Invoices() {
       case 'overdue': return { variant: 'destructive' as const, text: 'Overdue' };
       case 'cancelled': return { variant: 'outline' as const, text: 'Cancelled' };
       default: return { variant: 'secondary' as const, text: status };
+    }
+  };
+
+  const getSourceLabel = (source?: string) => {
+    switch (source) {
+      case 'member_signup': return 'Auto · Signup';
+      case 'payment': return 'Auto · Payment';
+      case 'renewal': return 'Auto · Renewal';
+      case 'manual': return 'Manual';
+      default: return 'Manual';
     }
   };
 

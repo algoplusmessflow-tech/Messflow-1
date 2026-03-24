@@ -6,12 +6,12 @@ import { useEffect } from 'react';
 import type { SalesPerson, SalesPersonInsert, SalesPersonUpdate } from '@/integrations/supabase/types-extended';
 
 function generateAccessToken(): string {
-  const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
+  const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
   let token = '';
-  for (let i = 0; i < 32; i++) {
+  for (let i = 0; i < 6; i++) {
     token += chars.charAt(Math.floor(Math.random() * chars.length));
   }
-  return token;
+  return token.toUpperCase();
 }
 
 export function useSalesPersons() {
@@ -70,6 +70,8 @@ export function useSalesPersons() {
     mutationFn: async (salesPerson: Omit<SalesPersonInsert, 'owner_id' | 'access_token'>) => {
       if (!user) throw new Error('Not authenticated');
       
+      console.log('Adding sales person:', salesPerson);
+      
       const { data, error } = await supabase
         .from('sales_persons')
         .insert({
@@ -80,7 +82,12 @@ export function useSalesPersons() {
         .select()
         .single();
 
-      if (error) throw error;
+      if (error) {
+        console.error('Supabase error:', error);
+        throw error;
+      }
+      
+      console.log('Sales person added:', data);
       return data as SalesPerson;
     },
     onSuccess: () => {
@@ -88,6 +95,7 @@ export function useSalesPersons() {
       toast.success('Sales person added successfully!');
     },
     onError: (error: Error) => {
+      console.error('Error adding sales person:', error);
       toast.error('Failed to add sales person: ' + error.message);
     },
   });

@@ -14,10 +14,13 @@ import { useMembers } from '@/hooks/useMembers';
 import { useQueryClient, useMutation, useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
-import { Plus, Search, X, Phone, MapPin, Map, Edit2, Copy, CheckCircle, Loader2, Truck, Users } from 'lucide-react';
+import { Plus, Search, X, Phone, MapPin, Map, Edit2, Copy, CheckCircle, Loader2, Truck, Users, CheckCircle2, AlertTriangle, Image, Calendar, Eye } from 'lucide-react';
 import { generateAccessCode } from '@/lib/utils';
 import { useAuth } from '@/lib/auth';
 import { extractCoordinatesFromInput, fetchLocationFromAddress, sanitizeMapLink } from '@/lib/geolocation';
+import { useDeliveryCompletions, DeliveryCompletionWithDetails } from '@/hooks/useDeliveryCompletions';
+import { formatDistance } from '@/lib/geolocation';
+import { formatDate } from '@/lib/format';
 
 type Driver = {
   id: string;
@@ -93,15 +96,19 @@ export default function DeliveryManagement() {
     queryKey: ['delivery-zones', user?.id],
     queryFn: async () => {
       if (!user) return [];
-      const { data, error } = await supabase
+      let result = await supabase
         .from('delivery_areas')
         .select('*, driver:drivers(id, name, phone)')
         .eq('owner_id', user.id)
         .order('name');
-      if (error) throw error;
-      return (data || []).map((z: any) => ({
+      if (result.error) {
+        result = await supabase.from('delivery_areas').select('*').eq('owner_id', user.id).order('name') as any;
+        if (result.error) throw result.error;
+        return (result.data || []).map((z: any) => ({ ...z, driver: null }));
+      }
+      return (result.data || []).map((z: any) => ({
         ...z,
-        driver: z.driver?.[0] || null,
+        driver: Array.isArray(z.driver) ? z.driver[0] || null : z.driver || null,
       }));
     },
     enabled: !!user,
@@ -169,6 +176,48 @@ export default function DeliveryManagement() {
       toast.error('Failed to update driver: ' + error.message);
     }
   });
+
+  const assignDriverToZoneMutation = useMutation({
+    mutationFn: async ({ zoneId, driverId }: { zoneId: string; driverId: string | null }) => {
+      const { error } = await supabase
+        .from('delivery_areas')
+        .update({ driver_id: driverId, updated_at: new Date().toISOString() })
+        .eq('id', zoneId)
+        .eq('owner_id', user?.id || '');
+
+      if (error) throw error;
+
+      if (driverId) {
+        const { data: existingMappings } = await supabase
+          .from('driver_zone_mapping')
+          .select('id')
+          .eq('zone_id', zoneId)
+          .eq('driver_id', driverId);
+
+        if (!existingMappings || existingMappings.length === 0) {
+          await supabase
+            .from('driver_zone_mapping')
+            .insert({ zone_id: zoneId, driver_id: driverId });
+        }
+      } else {
+        await supabase
+          .from('driver_zone_mapping')
+          .delete()
+          .eq('zone_id', zoneId);
+      }
+    },
+    onSuccess: () => {
+      toast.success('Driver assigned to zone successfully!');
+      queryClient.invalidateQueries({ queryKey: ['delivery-zones', user?.id] });
+    },
+    onError: (error) => {
+      toast.error('Failed to assign driver: ' + error.message);
+    }
+  });
+
+  const handleAssignDriverToZone = async (zoneId: string, driverId: string | null) => {
+    await assignDriverToZoneMutation.mutateAsync({ zoneId, driverId });
+  };
 
   const updateMemberLocationMutation = useMutation({
     mutationFn: async ({ memberId, locationData }: { memberId: string; locationData: any }) => {
@@ -401,6 +450,9 @@ export default function DeliveryManagement() {
             selectedZoneId={selectedArea}
             onSelectZone={setSelectedArea}
             onRefresh={() => queryClient.invalidateQueries({ queryKey: ['delivery-zones', user?.id] })}
+            drivers={drivers}
+            onAssignDriver={handleAssignDriverToZone}
+            isAssigningDriver={assignDriverToZoneMutation.isPending}
           />
 
         </div>
@@ -469,6 +521,8 @@ export default function DeliveryManagement() {
             )}
           </CardContent>
         </Card>
+
+        <DeliveryCompletionsSection userId={user?.id} drivers={drivers} />
 
         <Dialog open={isAddDriverOpen} onOpenChange={setIsAddDriverOpen}>
           <DialogContent>
@@ -688,5 +742,275 @@ export default function DeliveryManagement() {
         </Dialog>
       </div>
     </AppLayout>
+  );
+}
+
+type DriverBasic = {
+  id: string;
+  name: string;
+  phone: string;
+};
+
+function DeliveryCompletionsSection({ 
+  userId, 
+  drivers 
+}: { 
+  userId?: string; 
+  drivers: DriverBasic[]; 
+}) {
+  const { completions, isLoading } = useDeliveryCompletions({ ownerId: userId });
+  const [selectedCompletion, setSelectedCompletion] = useState<DeliveryCompletionWithDetails | null>(null);
+  const [dateFilter, setDateFilter] = useState<string>('today');
+  const [driverFilter, setDriverFilter] = useState<string>('all');
+
+  const filteredCompletions = useMemo(() => {
+    let filtered = [...completions];
+    
+    if (dateFilter === 'today') {
+      const today = new Date().toISOString().split('T')[0];
+      filtered = filtered.filter(c => c.delivery_date === today);
+    } else if (dateFilter === 'week') {
+      const weekAgo = new Date();
+      weekAgo.setDate(weekAgo.getDate() - 7);
+      filtered = filtered.filter(c => new Date(c.completed_at) >= weekAgo);
+    }
+
+    if (driverFilter !== 'all') {
+      filtered = filtered.filter(c => c.driver_id === driverFilter);
+    }
+
+    return filtered;
+  }, [completions, dateFilter, driverFilter]);
+
+  const stats = useMemo(() => {
+    const today = new Date().toISOString().split('T')[0];
+    const todayCompletions = completions.filter(c => c.delivery_date === today);
+    const flaggedCount = todayCompletions.filter(c => c.status === 'flagged').length;
+    const matchedCount = todayCompletions.filter(c => c.location_matched === true).length;
+    return {
+      totalToday: todayCompletions.length,
+      flagged: flaggedCount,
+      matched: matchedCount,
+    };
+  }, [completions]);
+
+  if (!userId) return null;
+
+  return (
+    <>
+      <Card>
+        <CardHeader className="flex flex-row items-center justify-between">
+          <CardTitle className="text-lg flex items-center gap-2">
+            <CheckCircle2 className="h-5 w-5" />
+            Delivery Completions
+          </CardTitle>
+          <div className="flex items-center gap-2">
+            <Badge variant="outline">
+              {stats.totalToday} today
+            </Badge>
+            {stats.flagged > 0 && (
+              <Badge variant="destructive">
+                {stats.flagged} flagged
+              </Badge>
+            )}
+          </div>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div className="flex flex-wrap gap-2">
+            <Select value={dateFilter} onValueChange={setDateFilter}>
+              <SelectTrigger className="w-[140px]">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="today">Today</SelectItem>
+                <SelectItem value="week">This Week</SelectItem>
+                <SelectItem value="all">All Time</SelectItem>
+              </SelectContent>
+            </Select>
+
+            <Select value={driverFilter} onValueChange={setDriverFilter}>
+              <SelectTrigger className="w-[160px]">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All Drivers</SelectItem>
+                {drivers.map(driver => (
+                  <SelectItem key={driver.id} value={driver.id}>
+                    {driver.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+
+          {isLoading ? (
+            <div className="space-y-2">
+              {[1, 2, 3].map(i => (
+                <Skeleton key={i} className="h-16 w-full" />
+              ))}
+            </div>
+          ) : filteredCompletions.length === 0 ? (
+            <div className="text-center py-8 text-muted-foreground">
+              <CheckCircle2 className="h-12 w-12 mx-auto mb-3 opacity-30" />
+              <p>No completed deliveries found</p>
+            </div>
+          ) : (
+            <ScrollArea className="max-h-[400px]">
+              <div className="space-y-2">
+                {filteredCompletions.map(completion => (
+                  <Card 
+                    key={completion.id} 
+                    className={`cursor-pointer hover:bg-muted/50 transition-colors ${
+                      completion.status === 'flagged' ? 'border-amber-200' : ''
+                    }`}
+                    onClick={() => setSelectedCompletion(completion)}
+                  >
+                    <CardContent className="p-3">
+                      <div className="flex items-start justify-between gap-3">
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center gap-2">
+                            <p className="font-medium truncate">{completion.member_name || 'Unknown Member'}</p>
+                            {completion.status === 'flagged' && (
+                              <AlertTriangle className="h-4 w-4 text-amber-500 flex-shrink-0" />
+                            )}
+                            {completion.location_matched === true && (
+                              <CheckCircle2 className="h-4 w-4 text-green-500 flex-shrink-0" />
+                            )}
+                          </div>
+                          <p className="text-sm text-muted-foreground">
+                            Driver: {completion.driver_name || 'Unknown'}
+                          </p>
+                          <div className="flex items-center gap-3 text-xs text-muted-foreground mt-1">
+                            <span className="flex items-center gap-1">
+                              <Calendar className="h-3 w-3" />
+                              {formatDate(completion.completed_at)}
+                            </span>
+                            {completion.location_match_distance_km !== null && (
+                              <span>
+                                {formatDistance(completion.location_match_distance_km)} away
+                              </span>
+                            )}
+                          </div>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          {completion.proof_photo_url && (
+                            <Image className="h-4 w-4 text-muted-foreground" />
+                          )}
+                          <Button variant="ghost" size="icon" className="h-8 w-8">
+                            <Eye className="h-4 w-4" />
+                          </Button>
+                        </div>
+                      </div>
+                    </CardContent>
+                  </Card>
+                ))}
+              </div>
+            </ScrollArea>
+          )}
+        </CardContent>
+      </Card>
+
+      <Dialog open={!!selectedCompletion} onOpenChange={() => setSelectedCompletion(null)}>
+        <DialogContent className="max-w-lg">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <CheckCircle2 className="h-5 w-5 text-green-600" />
+              Delivery Completion Details
+            </DialogTitle>
+          </DialogHeader>
+          
+          {selectedCompletion && (
+            <div className="space-y-4">
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <Label className="text-muted-foreground">Customer</Label>
+                  <p className="font-medium">{selectedCompletion.member_name}</p>
+                  <p className="text-sm text-muted-foreground">{selectedCompletion.member_phone}</p>
+                </div>
+                <div>
+                  <Label className="text-muted-foreground">Driver</Label>
+                  <p className="font-medium">{selectedCompletion.driver_name}</p>
+                  <p className="text-sm text-muted-foreground">{selectedCompletion.driver_phone}</p>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <Label className="text-muted-foreground">Delivery Date</Label>
+                  <p className="font-medium">{formatDate(selectedCompletion.delivery_date)}</p>
+                </div>
+                <div>
+                  <Label className="text-muted-foreground">Completed At</Label>
+                  <p className="font-medium">{formatDate(selectedCompletion.completed_at)}</p>
+                </div>
+              </div>
+
+              <div>
+                <Label className="text-muted-foreground">Status</Label>
+                <div className="flex items-center gap-2 mt-1">
+                  <Badge 
+                    variant={selectedCompletion.status === 'flagged' ? 'destructive' : 'default'}
+                    className={selectedCompletion.status === 'completed' ? 'bg-green-500' : ''}
+                  >
+                    {selectedCompletion.status === 'flagged' ? 'Flagged' : 'Completed'}
+                  </Badge>
+                  {selectedCompletion.location_matched === true && (
+                    <Badge variant="outline" className="border-green-500 text-green-600">
+                      Location Matched
+                    </Badge>
+                  )}
+                  {selectedCompletion.location_matched === false && (
+                    <Badge variant="outline" className="border-amber-500 text-amber-600">
+                      Location Mismatch
+                    </Badge>
+                  )}
+                </div>
+              </div>
+
+              {selectedCompletion.location_lat && selectedCompletion.location_lng && (
+                <div>
+                  <Label className="text-muted-foreground">Driver Location</Label>
+                  <p className="text-sm">
+                    {selectedCompletion.location_lat.toFixed(6)}, {selectedCompletion.location_lng.toFixed(6)}
+                  </p>
+                  {selectedCompletion.location_match_distance_km !== null && (
+                    <p className="text-sm text-muted-foreground">
+                      Distance from customer: {formatDistance(selectedCompletion.location_match_distance_km)}
+                    </p>
+                  )}
+                </div>
+              )}
+
+              {selectedCompletion.proof_photo_url && (
+                <div>
+                  <Label className="text-muted-foreground mb-2 block">Photo Proof</Label>
+                  <a
+                    href={selectedCompletion.proof_photo_url}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="block"
+                  >
+                    <img
+                      src={selectedCompletion.proof_photo_url}
+                      alt="Proof"
+                      className="max-h-48 rounded-lg border"
+                    />
+                  </a>
+                </div>
+              )}
+
+              {selectedCompletion.notes && (
+                <div>
+                  <Label className="text-muted-foreground">Notes</Label>
+                  <p className="text-sm mt-1 p-2 bg-muted rounded">
+                    {selectedCompletion.notes}
+                  </p>
+                </div>
+              )}
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
+    </>
   );
 }

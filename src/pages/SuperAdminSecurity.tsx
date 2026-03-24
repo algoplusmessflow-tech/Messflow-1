@@ -4,20 +4,27 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Skeleton } from '@/components/ui/skeleton';
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from '@/components/ui/table';
 import { Input } from '@/components/ui/input';
 import { useSecurityLogs } from '@/hooks/useSecurityLogger';
 import { useSuperAdmin } from '@/hooks/useSuperAdmin';
 import { useUserRole } from '@/hooks/useUserRole';
 import { formatDate } from '@/lib/format';
 import { supabase } from '@/integrations/supabase/client';
-import { 
-  Shield, 
-  AlertTriangle, 
-  XCircle, 
-  RefreshCw, 
-  Search, 
-  Lock, 
+import {
+  Shield,
+  AlertTriangle,
+  XCircle,
+  RefreshCw,
+  Search,
+  Lock,
   KeyRound,
   Loader2,
   ChevronLeft,
@@ -25,7 +32,10 @@ import {
 import { toast } from 'sonner';
 import { Link } from 'react-router-dom';
 
-const EVENT_TYPE_CONFIG: Record<string, { label: string; variant: 'default' | 'secondary' | 'destructive' | 'outline' }> = {
+const EVENT_TYPE_CONFIG: Record<
+  string,
+  { label: string; variant: 'default' | 'secondary' | 'destructive' | 'outline' }
+> = {
   LOGIN: { label: 'Login', variant: 'default' },
   FAILED_LOGIN: { label: 'Failed Login', variant: 'destructive' },
   LOGOUT: { label: 'Logout', variant: 'secondary' },
@@ -63,7 +73,9 @@ export default function SuperAdminSecurity() {
         <Card className="w-full max-w-md">
           <CardContent className="py-8 text-center">
             <p className="text-destructive font-medium">Access Denied</p>
-            <p className="text-muted-foreground mt-2">You don't have permission to access this page.</p>
+            <p className="text-muted-foreground mt-2">
+              You don't have permission to access this page.
+            </p>
           </CardContent>
         </Card>
       </div>
@@ -75,14 +87,18 @@ export default function SuperAdminSecurity() {
     try {
       const { error } = await supabase
         .from('profiles')
-        .update({ is_active: false } as any)
+        .update({ is_active: false })
         .eq('user_id', userId);
-      
+
       if (error) throw error;
       toast.success('User has been blocked');
       refetch();
-    } catch (error: any) {
-      toast.error('Failed to block user: ' + error.message);
+    } catch (error: unknown) {
+      if (error instanceof Error) {
+        toast.error('Failed to block user: ' + error.message);
+      } else {
+        toast.error('Failed to block user');
+      }
     } finally {
       setBlockingUserId(null);
     }
@@ -93,17 +109,31 @@ export default function SuperAdminSecurity() {
       const { error } = await supabase.auth.resetPasswordForEmail(email, {
         redirectTo: `${window.location.origin}/login`,
       });
-      
+
       if (error) throw error;
       toast.success('Password reset email sent');
-    } catch (error: any) {
-      toast.error('Failed to send reset email: ' + error.message);
+    } catch (error: unknown) {
+      if (error instanceof Error) {
+        toast.error('Failed to send reset email: ' + error.message);
+      } else {
+        toast.error('Failed to send reset email');
+      }
     }
   };
 
   const getProfileByUserId = (userId: string | null) => {
     if (!userId) return null;
-    return allProfiles.find(p => p.user_id === userId);
+    return allProfiles.find((p) => p.user_id === userId);
+  };
+
+  // Safely extract email from log.details if possible
+  const getEmailFromDetails = (details: unknown): string | undefined => {
+    if (typeof details === 'object' && details !== null && 'email' in details) {
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
+      // The cast is safe after the runtime check above
+      return (details as { email?: string }).email;
+    }
+    return undefined;
   };
 
   // Filter logs based on search
@@ -117,15 +147,19 @@ export default function SuperAdminSecurity() {
       profile?.business_name?.toLowerCase().includes(searchLower) ||
       JSON.stringify(log.details || {}).toLowerCase().includes(searchLower)
     );
-  }) || [];
+  }) ?? [];
 
   // Threat indicators
-  const failedLogins = securityLogs?.filter(l => l.event_type === 'FAILED_LOGIN') || [];
-  const rateLimitHits = securityLogs?.filter(l => l.event_type === 'RATE_LIMIT_HIT') || [];
-  const bulkDeletes = securityLogs?.filter(l => l.event_type === 'BULK_DELETE') || [];
+  const failedLogins = securityLogs?.filter((l) => l.event_type === 'FAILED_LOGIN') ?? [];
+  const rateLimitHits = securityLogs?.filter((l) => l.event_type === 'RATE_LIMIT_HIT') ?? [];
+  const bulkDeletes = securityLogs?.filter((l) => l.event_type === 'BULK_DELETE') ?? [];
 
-  const threatLevel = failedLogins.length > 10 || rateLimitHits.length > 5 ? 'HIGH' : 
-                      failedLogins.length > 5 || rateLimitHits.length > 2 ? 'MEDIUM' : 'LOW';
+  const threatLevel =
+    failedLogins.length > 10 || rateLimitHits.length > 5
+      ? 'HIGH'
+      : failedLogins.length > 5 || rateLimitHits.length > 2
+      ? 'MEDIUM'
+      : 'LOW';
 
   return (
     <SuperAdminLayout>
@@ -153,13 +187,37 @@ export default function SuperAdminSecurity() {
 
         {/* Threat Level Card */}
         <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-          <Card className={`${threatLevel === 'HIGH' ? 'border-destructive bg-destructive/5' : threatLevel === 'MEDIUM' ? 'border-yellow-500 bg-yellow-500/5' : 'border-primary/30 bg-primary/5'}`}>
+          <Card
+            className={`${
+              threatLevel === 'HIGH'
+                ? 'border-destructive bg-destructive/5'
+                : threatLevel === 'MEDIUM'
+                ? 'border-yellow-500 bg-yellow-500/5'
+                : 'border-primary/30 bg-primary/5'
+            }`}
+          >
             <CardContent className="p-4">
               <div className="flex items-center gap-3">
-                <AlertTriangle className={`h-8 w-8 ${threatLevel === 'HIGH' ? 'text-destructive' : threatLevel === 'MEDIUM' ? 'text-yellow-500' : 'text-primary'}`} />
+                <AlertTriangle
+                  className={`h-8 w-8 ${
+                    threatLevel === 'HIGH'
+                      ? 'text-destructive'
+                      : threatLevel === 'MEDIUM'
+                      ? 'text-yellow-500'
+                      : 'text-primary'
+                  }`}
+                />
                 <div>
                   <p className="text-sm text-muted-foreground">Threat Level</p>
-                  <p className={`text-2xl font-bold ${threatLevel === 'HIGH' ? 'text-destructive' : threatLevel === 'MEDIUM' ? 'text-yellow-500' : 'text-primary'}`}>
+                  <p
+                    className={`text-2xl font-bold ${
+                      threatLevel === 'HIGH'
+                        ? 'text-destructive'
+                        : threatLevel === 'MEDIUM'
+                        ? 'text-yellow-500'
+                        : 'text-primary'
+                    }`}
+                  >
                     {threatLevel}
                   </p>
                 </div>
@@ -245,14 +303,18 @@ export default function SuperAdminSecurity() {
                   <TableBody>
                     {filteredLogs.map((log) => {
                       const profile = getProfileByUserId(log.user_id);
-                      const eventConfig = EVENT_TYPE_CONFIG[log.event_type] || { label: log.event_type, variant: 'secondary' as const };
+                      const eventConfig =
+                        EVENT_TYPE_CONFIG[log.event_type] || {
+                          label: log.event_type,
+                          variant: 'secondary' as const,
+                        };
                       const isFailedLogin = log.event_type === 'FAILED_LOGIN';
                       const isRateLimitHit = log.event_type === 'RATE_LIMIT_HIT';
                       const isThreat = isFailedLogin || isRateLimitHit;
 
                       return (
-                        <TableRow 
-                          key={log.id} 
+                        <TableRow
+                          key={log.id}
                           className={isThreat ? 'bg-destructive/10 hover:bg-destructive/20' : ''}
                         >
                           <TableCell className="text-sm whitespace-nowrap">
@@ -263,9 +325,7 @@ export default function SuperAdminSecurity() {
                             </span>
                           </TableCell>
                           <TableCell>
-                            <Badge variant={eventConfig.variant}>
-                              {eventConfig.label}
-                            </Badge>
+                            <Badge variant={eventConfig.variant}>{eventConfig.label}</Badge>
                           </TableCell>
                           <TableCell>
                             {profile ? (
@@ -275,7 +335,7 @@ export default function SuperAdminSecurity() {
                               </div>
                             ) : (
                               <span className="text-muted-foreground">
-                                {(log.details as any)?.email || 'Unknown'}
+                                {getEmailFromDetails(log.details) || 'Unknown'}
                               </span>
                             )}
                           </TableCell>

@@ -17,6 +17,7 @@ import {
   DialogContent,
   DialogHeader,
   DialogTitle,
+  DialogDescription,
   DialogTrigger,
   DialogFooter,
 } from '@/components/ui/dialog';
@@ -58,6 +59,7 @@ import { MemberRenewalModal } from '@/components/MemberRenewalModal';
 import { TransactionHistoryModal } from '@/components/TransactionHistoryModal';
 import { cn } from '@/lib/utils';
 import { InlineAddSelect } from '@/components/InlineAddSelect';
+import { createInvoiceRecord } from '@/lib/invoice-service';
 
 type PlanType = Database['public']['Enums']['plan_type'];
 type MemberStatus = Database['public']['Enums']['member_status'];
@@ -81,7 +83,26 @@ export default function Members() {
   const [isBulkReminderOpen, setIsBulkReminderOpen] = useState(false);
   const [isImportOpen, setIsImportOpen] = useState(false);
   const [isEditOpen, setIsEditOpen] = useState(false);
+  const [isInvoicesOpen, setIsInvoicesOpen] = useState(false);
   const [deleteId, setDeleteId] = useState<string | null>(null);
+
+  // Invoice management state
+  const [invoices, setInvoices] = useState<Array<{
+    id: string;
+    invoice_number: string;
+    member_id: string;
+    member_name?: string;
+    customer_phone?: string;
+    billing_period_start: Date | string;
+    billing_period_end: Date | string;
+    status: string;
+    total_amount: number;
+    paid_date: Date | string | null;
+    created_at: Date | string;
+    is_recurring?: boolean;
+  }>>([]);
+  const [invoicesLoading, setInvoicesLoading] = useState(false);
+  const [selectedMemberForInvoice, setSelectedMemberForInvoice] = useState<typeof members[0] | null>(null);
 
   // Sharing state
   const [isShareDialogOpen, setIsShareDialogOpen] = useState(false);
@@ -119,7 +140,7 @@ export default function Members() {
 
   // Search and filter state
   const [searchQuery, setSearchQuery] = useState('');
-  const [statusFilter, setStatusFilter] = useState<MemberStatus | 'all'>('all');
+  const [paymentFilter, setPaymentFilter] = useState<'all' | 'paid' | 'unpaid' | 'expired' | 'trial'>('all');
   const [planFilter, setPlanFilter] = useState<PlanType | 'all'>('all');
   const [showFilters, setShowFilters] = useState(false);
 
@@ -190,27 +211,45 @@ export default function Members() {
     { value: 'all_three', label: 'All Three Meals' },
   ];
 
-  // Filtered members
+  // Filtered members with payment status and trial filtering
   const filteredMembers = useMemo(() => {
     return members.filter((member) => {
       const matchesSearch = searchQuery === '' ||
         member.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
         member.phone.includes(searchQuery);
-      const matchesStatus = statusFilter === 'all' || member.status === statusFilter;
+      
+      // Payment status filter
+      const isPaid = Number(member.balance) === 0;
+      // Check if trial has expired (inline to avoid hoisting issue)
+      const trialExpired = member.free_trial && member.trial_days 
+        ? getDaysUntilExpiry(member.plan_expiry_date) < 0 
+        : false;
+      // Check if regular plan has expired (non-trial members)
+      const planExpired = !member.free_trial && getDaysUntilExpiry(member.plan_expiry_date) < 0;
+      // Combined expired status
+      const isExpired = trialExpired || planExpired;
+      
+      const matchesPayment = paymentFilter === 'all' || (
+        paymentFilter === 'paid' && isPaid && !member.free_trial && !planExpired ||
+        paymentFilter === 'unpaid' && !isPaid && !member.free_trial && !planExpired ||
+        paymentFilter === 'expired' && isExpired ||
+        paymentFilter === 'trial' && member.free_trial && !trialExpired
+      );
+      
       const matchesPlan = planFilter === 'all' || member.plan_type === planFilter;
-      return matchesSearch && matchesStatus && matchesPlan;
+      return matchesSearch && matchesPayment && matchesPlan;
     });
-  }, [members, searchQuery, statusFilter, planFilter]);
+  }, [members, searchQuery, paymentFilter, planFilter]);
 
   // Members with outstanding balance for bulk reminder
   const unpaidMembers = useMemo(() => {
     return members.filter((m) => Number(m.balance) > 0);
   }, [members]);
 
-  const hasActiveFilters = statusFilter !== 'all' || planFilter !== 'all';
+  const hasActiveFilters = paymentFilter !== 'all' || planFilter !== 'all';
 
   const clearFilters = () => {
-    setStatusFilter('all');
+    setPaymentFilter('all');
     setPlanFilter('all');
     setSearchQuery('');
   };
@@ -226,9 +265,21 @@ export default function Members() {
     }
 
     const joiningDate = new Date(formData.joining_date);
-    const expiryDate = calculateExpiryDate(joiningDate);
+    
+    // Calculate expiry date based on trial period
+    let expiryDate: Date;
+    if (formData.free_trial && formData.trial_days) {
+      // For trial members, set expiry to joining_date + trial_days
+      expiryDate = new Date(joiningDate);
+      expiryDate.setDate(expiryDate.getDate() + formData.trial_days);
+    } else {
+      // Regular members get 1 month
+      expiryDate = calculateExpiryDate(joiningDate);
+    }
+    
     const monthlyFee = Number(formData.monthly_fee);
-    const balance = formData.isPaid ? 0 : monthlyFee;
+    // Trial members start with balance = monthly_fee (unpaid until trial ends or they pay)
+    const balance = formData.isPaid ? 0 : (formData.free_trial ? 0 : monthlyFee);
 
     // Generate portal credentials for customer login
     const creds = generatePortalCredentials(formData.name);
@@ -259,20 +310,38 @@ export default function Members() {
       portal_password: creds.password,
     } as any);
 
-    if (formData.isPaid && newMember) {
+    if ((formData.isPaid || formData.free_trial) && newMember) {
       await addTransaction.mutateAsync({
         member_id: newMember.id,
         amount: monthlyFee,
         type: 'payment',
-        notes: 'Initial payment on signup',
+        notes: formData.free_trial ? 'Trial period started' : 'Initial payment on signup',
       });
 
-      setLastPaymentInfo({
-        memberName: formData.name.trim(),
-        amount: monthlyFee,
-        phone: formData.phone.trim(),
-      });
-      setIsInvoiceDialogOpen(true);
+      if (formData.isPaid && !formData.free_trial) {
+        // Auto-create invoice record in DB
+        if (user) {
+          await createInvoiceRecord({
+            ownerId: user.id,
+            memberId: newMember.id,
+            memberName: formData.name.trim(),
+            memberPhone: formData.phone.trim(),
+            amount: monthlyFee,
+            taxRate: profile?.tax_rate || 5,
+            taxName: profile?.tax_name || 'VAT',
+            businessName: profile?.business_name,
+            source: 'member_signup',
+          });
+          queryClient.invalidateQueries({ queryKey: ['invoices'] });
+        }
+
+        setLastPaymentInfo({
+          memberName: formData.name.trim(),
+          amount: monthlyFee,
+          phone: formData.phone.trim(),
+        });
+        setIsInvoiceDialogOpen(true);
+      }
     }
 
     setFormData({
@@ -318,6 +387,22 @@ export default function Members() {
       id: selectedMember.id,
       balance: newBalance,
     });
+
+    // Auto-create invoice record in DB for this payment
+    if (user) {
+      await createInvoiceRecord({
+        ownerId: user.id,
+        memberId: selectedMember.id,
+        memberName: selectedMember.name,
+        memberPhone: selectedMember.phone,
+        amount,
+        taxRate: profile?.tax_rate || 5,
+        taxName: profile?.tax_name || 'VAT',
+        businessName: profile?.business_name,
+        source: 'payment',
+      });
+      queryClient.invalidateQueries({ queryKey: ['invoices'] });
+    }
 
     setLastPaymentInfo({
       memberName: selectedMember.name,
@@ -577,16 +662,34 @@ Thank you for your prompt attention! \u{1F64F}`;
     e.preventDefault();
     if (!selectedMember) return;
 
+    // Recalculate expiry date if joining date or trial status changed
+    let expiryDate = editFormData.plan_expiry_date?.toISOString();
+    if (editFormData.joining_date) {
+      const joiningDate = new Date(editFormData.joining_date);
+      if (editFormData.free_trial && editFormData.trial_days) {
+        const trialExpiry = new Date(joiningDate);
+        trialExpiry.setDate(trialExpiry.getDate() + editFormData.trial_days);
+        expiryDate = trialExpiry.toISOString();
+      } else if (!selectedMember.free_trial && editFormData.joining_date.getTime() !== new Date(selectedMember.joining_date).getTime()) {
+        // Only recalculate for non-trial members if joining date changed
+        expiryDate = calculateExpiryDate(joiningDate).toISOString();
+      }
+    }
+
+    // Calculate balance - trial members have 0 balance during trial
+    const monthlyFee = Number(editFormData.monthly_fee);
+    const balance = editFormData.isPaid ? 0 : (editFormData.free_trial ? 0 : monthlyFee);
+
     await updateMember.mutateAsync({
       id: selectedMember.id,
       name: editFormData.name.trim(),
       phone: editFormData.phone.trim(),
       plan_type: editFormData.plan_type,
-      monthly_fee: Number(editFormData.monthly_fee),
+      monthly_fee: monthlyFee,
       status: editFormData.status,
       joining_date: editFormData.joining_date?.toISOString(),
-      plan_expiry_date: editFormData.plan_expiry_date?.toISOString(),
-      balance: editFormData.isPaid ? 0 : (Number(selectedMember.balance) > 0 ? Number(selectedMember.balance) : Number(editFormData.monthly_fee)),
+      plan_expiry_date: expiryDate,
+      balance: balance,
       address: editFormData.address || null,
       delivery_area_id: editFormData.delivery_area_id || null,
       special_notes: editFormData.special_notes || null,
@@ -614,10 +717,53 @@ Thank you for your prompt attention! \u{1F64F}`;
     return null;
   };
 
+  // Check if trial has expired and service should be paused
+  const isTrialExpired = (member: typeof members[0]) => {
+    if (!member.free_trial || !member.trial_days) return false;
+    const daysUntilExpiry = getDaysUntilExpiry(member.plan_expiry_date);
+    return daysUntilExpiry < 0; // Trial expired
+  };
+
+  // Get effective service status considering trial expiration
+  const getServiceStatus = (member: typeof members[0]) => {
+    // If trial expired and not paid, service should be paused
+    if (isTrialExpired(member) && Number(member.balance) > 0) {
+      return 'trial_expired';
+    }
+    return member.status;
+  };
+
   const handleDelete = async () => {
     if (!deleteId) return;
     await deleteMember.mutateAsync(deleteId);
     setDeleteId(null);
+  };
+
+  // Fetch invoices for a member
+  const fetchMemberInvoices = async (memberPhone: string) => {
+    setInvoicesLoading(true);
+    try {
+      const { data, error } = await supabase
+        .from('invoices')
+        .select('*')
+        .eq('customer_phone', memberPhone)
+        .order('created_at', { ascending: false });
+      
+      if (error) throw error;
+      setInvoices(data || []);
+    } catch (error) {
+      console.error('Error fetching invoices:', error);
+      toast.error('Failed to load invoices');
+      setInvoices([]);
+    } finally {
+      setInvoicesLoading(false);
+    }
+  };
+
+  const openInvoicesDialog = (member: typeof members[0]) => {
+    setSelectedMemberForInvoice(member);
+    setIsInvoicesOpen(true);
+    fetchMemberInvoices(member.phone);
   };
 
   const getRemainingAfterPayment = () => {
@@ -963,35 +1109,64 @@ Thank you for your prompt attention! \u{1F64F}`;
                         <div>
                           <Label htmlFor="trial-toggle" className="text-sm cursor-pointer">Free Trial</Label>
                           <p className="text-[10px] text-muted-foreground">
-                            {formData.free_trial ? `${formData.trial_days}-day free trial period` : 'No charge during trial'}
+                            {formData.free_trial 
+                              ? `${formData.trial_days}-day trial (service stops after expiry)` 
+                              : 'Regular paid subscription'}
                           </p>
                         </div>
                         <Switch
                           id="trial-toggle"
                           checked={formData.free_trial}
-                          onCheckedChange={(checked) => setFormData({ ...formData, free_trial: checked, isPaid: checked ? true : formData.isPaid })}
-                          disabled={formData.isPaid && !formData.free_trial}
+                          onCheckedChange={(checked) => setFormData({ 
+                            ...formData, 
+                            free_trial: checked, 
+                            // When enabling trial, set as unpaid (balance will be charged after trial)
+                            // When disabling trial, require immediate payment
+                            isPaid: checked ? false : formData.isPaid 
+                          })}
                         />
                       </div>
                       {formData.free_trial && (
-                        <div className="mt-3 flex items-center gap-2">
-                          <Label className="text-xs text-muted-foreground whitespace-nowrap">Trial Duration:</Label>
-                          <Select
-                            value={String(formData.trial_days)}
-                            onValueChange={(v) => setFormData({ ...formData, trial_days: parseInt(v) })}
-                          >
-                            <SelectTrigger className="h-8 w-28">
-                              <SelectValue />
-                            </SelectTrigger>
-                            <SelectContent>
-                              <SelectItem value="1">1 day</SelectItem>
-                              <SelectItem value="3">3 days</SelectItem>
-                              <SelectItem value="5">5 days</SelectItem>
-                              <SelectItem value="7">7 days</SelectItem>
-                              <SelectItem value="14">14 days</SelectItem>
-                              <SelectItem value="30">30 days</SelectItem>
-                            </SelectContent>
-                          </Select>
+                        <div className="mt-3 space-y-2">
+                          <div className="flex items-center gap-2">
+                            <Label className="text-xs text-muted-foreground whitespace-nowrap">Trial Duration:</Label>
+                            <Select
+                              value={String(formData.trial_days)}
+                              onValueChange={(v) => setFormData({ ...formData, trial_days: parseInt(v) })}
+                            >
+                              <SelectTrigger className="h-8 w-28">
+                                <SelectValue />
+                              </SelectTrigger>
+                              <SelectContent>
+                                <SelectItem value="1">1 day</SelectItem>
+                                <SelectItem value="3">3 days</SelectItem>
+                                <SelectItem value="5">5 days</SelectItem>
+                                <SelectItem value="7">7 days</SelectItem>
+                                <SelectItem value="14">14 days</SelectItem>
+                                <SelectItem value="30">30 days</SelectItem>
+                              </SelectContent>
+                            </Select>
+                          </div>
+                          <div className="grid grid-cols-2 gap-3">
+                            <div className="space-y-1">
+                              <Label className="text-xs">Trial Start Date</Label>
+                              <Input
+                                type="date"
+                                value={formData.joining_date}
+                                onChange={(e) => setFormData({ ...formData, joining_date: e.target.value })}
+                                className="h-8"
+                              />
+                            </div>
+                            <div className="space-y-1">
+                              <Label className="text-xs">Trial End Date</Label>
+                              <Input
+                                type="date"
+                                value={new Date(new Date(formData.joining_date).setDate(new Date(formData.joining_date).getDate() + formData.trial_days)).toISOString().split('T')[0]}
+                                disabled
+                                className="h-8 bg-muted"
+                              />
+                            </div>
+                          </div>
                         </div>
                       )}
                     </div>
@@ -1001,21 +1176,31 @@ Thank you for your prompt attention! \u{1F64F}`;
                     <div className="space-y-0.5">
                       <Label htmlFor="paid-toggle" className="text-base">Payment Status</Label>
                       <p className="text-sm text-muted-foreground">
-                        {formData.isPaid ? 'First month paid' : 'First month unpaid'}
+                        {formData.free_trial 
+                          ? 'Unpaid during trial, payment due after trial ends' 
+                          : formData.isPaid ? 'First month paid' : 'First month unpaid'}
                       </p>
                     </div>
                     <div className="flex items-center gap-2">
-                      <span className={`text-sm ${!formData.isPaid ? 'text-destructive font-medium' : 'text-muted-foreground'}`}>
-                        Unpaid
-                      </span>
-                      <Switch
-                        id="paid-toggle"
-                        checked={formData.isPaid}
-                        onCheckedChange={(checked) => setFormData({ ...formData, isPaid: checked })}
-                      />
-                      <span className={`text-sm ${formData.isPaid ? 'text-primary font-medium' : 'text-muted-foreground'}`}>
-                        Paid
-                      </span>
+                      {formData.free_trial ? (
+                        <Badge variant="outline" className="border-green-500 text-green-500">
+                          Trial Mode
+                        </Badge>
+                      ) : (
+                        <>
+                          <span className={`text-sm ${!formData.isPaid ? 'text-destructive font-medium' : 'text-muted-foreground'}`}>
+                            Unpaid
+                          </span>
+                          <Switch
+                            id="paid-toggle"
+                            checked={formData.isPaid}
+                            onCheckedChange={(checked) => setFormData({ ...formData, isPaid: checked })}
+                          />
+                          <span className={`text-sm ${formData.isPaid ? 'text-primary font-medium' : 'text-muted-foreground'}`}>
+                            Paid
+                          </span>
+                        </>
+                      )}
                     </div>
                   </div>
 
@@ -1067,16 +1252,18 @@ Thank you for your prompt attention! \u{1F64F}`;
           {showFilters && (
             <div className="flex flex-wrap gap-2 p-3 rounded-lg border bg-muted/30">
               <Select
-                value={statusFilter}
-                onValueChange={(value) => setStatusFilter(value as MemberStatus | 'all')}
+                value={paymentFilter}
+                onValueChange={(value) => setPaymentFilter(value as 'all' | 'paid' | 'unpaid' | 'expired' | 'trial')}
               >
-                <SelectTrigger className="w-32">
-                  <SelectValue placeholder="Status" />
+                <SelectTrigger className="w-36">
+                  <SelectValue placeholder="Payment Status" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="all">All Status</SelectItem>
-                  <SelectItem value="active">Active</SelectItem>
-                  <SelectItem value="inactive">Inactive</SelectItem>
+                  <SelectItem value="all">All Members</SelectItem>
+                  <SelectItem value="paid">💚 Paid</SelectItem>
+                  <SelectItem value="unpaid">💔 Unpaid</SelectItem>
+                  <SelectItem value="trial">🧪 Trial</SelectItem>
+                  <SelectItem value="expired">⚠️ Expired</SelectItem>
                 </SelectContent>
               </Select>
 
@@ -1196,24 +1383,45 @@ Thank you for your prompt attention! \u{1F64F}`;
                               <Pause className="h-2 w-2 mr-0.5" /> Paused
                             </Badge>
                           )}
-                          {(member as any).free_trial && (
+                          {(member as any).free_trial && !isTrialExpired(member) && (
                             <Badge variant="outline" className="text-[10px] h-4 px-1 border-green-500 text-green-500">
                               Trial
                             </Badge>
                           )}
-                          {(member as any).portal_username && (
-                            <Badge
-                              variant="outline"
-                              className="text-[10px] h-4 px-1 border-blue-500 text-blue-500 cursor-pointer select-all"
-                              title={`Username: ${(member as any).portal_username} | Password: ${(member as any).portal_password}`}
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                navigator.clipboard.writeText(`Username: ${(member as any).portal_username}\nPassword: ${(member as any).portal_password}`);
-                                toast.success('Login credentials copied!');
-                              }}
-                            >
-                              <KeyRound className="h-2 w-2 mr-0.5" /> {(member as any).portal_username}
+                          {isTrialExpired(member) && (
+                            <Badge variant="outline" className="text-[10px] h-4 px-1 border-red-500 text-red-500">
+                              <AlertTriangle className="h-2 w-2 mr-0.5" /> Trial Expired
                             </Badge>
+                          )}
+                          {(member as any).portal_username && (
+                            <div className="flex items-center gap-1">
+                              <Badge
+                                variant="outline"
+                                className="text-[10px] h-5 px-1.5 border-blue-500 text-blue-500 cursor-pointer hover:bg-blue-500/10"
+                                title="Click to copy username"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  navigator.clipboard.writeText((member as any).portal_username);
+                                  toast.success('Username copied!');
+                                }}
+                              >
+                                <UserPlus className="h-2.5 w-2.5 mr-0.5" /> {(member as any).portal_username}
+                                <Copy className="h-2 w-2 ml-0.5 opacity-60" />
+                              </Badge>
+                              <Badge
+                                variant="outline"
+                                className="text-[10px] h-5 px-1.5 border-green-500 text-green-500 cursor-pointer hover:bg-green-500/10"
+                                title="Click to copy password"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  navigator.clipboard.writeText((member as any).portal_password);
+                                  toast.success('Password copied!');
+                                }}
+                              >
+                                <KeyRound className="h-2.5 w-2.5 mr-0.5" /> ••••••
+                                <Copy className="h-2 w-2 ml-0.5 opacity-60" />
+                              </Badge>
+                            </div>
                           )}
                         </div>
                       </div>
@@ -1260,6 +1468,15 @@ Thank you for your prompt attention! \u{1F64F}`;
                             </Button>
                           )}
                           <div className="flex gap-1 ml-auto">
+                            <Button
+                              size="icon"
+                              variant="ghost"
+                              className="h-8 w-8"
+                              onClick={() => openInvoicesDialog(member)}
+                              title="View Invoices"
+                            >
+                              <FileText className="h-4 w-4" />
+                            </Button>
                             <Button
                               size="icon"
                               variant="ghost"
@@ -1576,29 +1793,59 @@ Thank you for your prompt attention! \u{1F64F}`;
                     <div>
                       <Label className="text-sm cursor-pointer">Free Trial</Label>
                       <p className="text-[10px] text-muted-foreground">
-                        {editFormData.free_trial ? `${editFormData.trial_days}-day trial` : 'No charge during trial'}
+                        {editFormData.free_trial 
+                          ? `${editFormData.trial_days}-day trial (service stops after expiry)` 
+                          : 'Regular paid subscription'}
                       </p>
                     </div>
                     <Switch
                       checked={editFormData.free_trial}
-                      onCheckedChange={(c) => setEditFormData({ ...editFormData, free_trial: c, isPaid: c ? true : editFormData.isPaid })}
-                      disabled={editFormData.isPaid && !editFormData.free_trial}
+                      onCheckedChange={(c) => setEditFormData({ 
+                        ...editFormData, 
+                        free_trial: c, 
+                        isPaid: c ? false : editFormData.isPaid 
+                      })}
                     />
                   </div>
                   {editFormData.free_trial && (
-                    <div className="mt-3 flex items-center gap-2">
-                      <Label className="text-xs text-muted-foreground whitespace-nowrap">Trial Duration:</Label>
-                      <Select value={String(editFormData.trial_days)} onValueChange={(v) => setEditFormData({ ...editFormData, trial_days: parseInt(v) })}>
-                        <SelectTrigger className="h-8 w-28"><SelectValue /></SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="1">1 day</SelectItem>
-                          <SelectItem value="3">3 days</SelectItem>
-                          <SelectItem value="5">5 days</SelectItem>
-                          <SelectItem value="7">7 days</SelectItem>
-                          <SelectItem value="14">14 days</SelectItem>
-                          <SelectItem value="30">30 days</SelectItem>
-                        </SelectContent>
-                      </Select>
+                    <div className="mt-3 space-y-2">
+                      <div className="flex items-center gap-2">
+                        <Label className="text-xs text-muted-foreground whitespace-nowrap">Trial Duration:</Label>
+                        <Select value={String(editFormData.trial_days)} onValueChange={(v) => setEditFormData({ ...editFormData, trial_days: parseInt(v) })}>
+                          <SelectTrigger className="h-8 w-28"><SelectValue /></SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="1">1 day</SelectItem>
+                            <SelectItem value="3">3 days</SelectItem>
+                            <SelectItem value="5">5 days</SelectItem>
+                            <SelectItem value="7">7 days</SelectItem>
+                            <SelectItem value="14">14 days</SelectItem>
+                            <SelectItem value="30">30 days</SelectItem>
+                          </SelectContent>
+                        </Select>
+                      </div>
+                      <div className="grid grid-cols-2 gap-3">
+                        <div className="space-y-1">
+                          <Label className="text-xs">Trial Start Date</Label>
+                          <Input
+                            type="date"
+                            value={editFormData.joining_date ? editFormData.joining_date.toISOString().split('T')[0] : ''}
+                            onChange={(e) => {
+                              const newDate = new Date(e.target.value);
+                              setEditFormData({ ...editFormData, joining_date: newDate });
+                            }}
+                            className="h-8"
+                          />
+                        </div>
+                        <div className="space-y-1">
+                          <Label className="text-xs">Trial End Date</Label>
+                          <Input
+                            type="date"
+                            value={editFormData.joining_date ? new Date(new Date(editFormData.joining_date).setDate(new Date(editFormData.joining_date).getDate() + editFormData.trial_days)).toISOString().split('T')[0] : ''}
+                            disabled
+                            className="h-8 bg-muted"
+                          />
+                        </div>
+                      </div>
                     </div>
                   )}
                 </div>
@@ -1608,21 +1855,31 @@ Thank you for your prompt attention! \u{1F64F}`;
                 <div className="space-y-0.5">
                   <Label htmlFor="edit-paid-toggle" className="text-base">Payment Status</Label>
                   <p className="text-sm text-muted-foreground">
-                    {editFormData.isPaid ? 'Balance cleared' : 'Outstanding balance'}
+                    {editFormData.free_trial 
+                      ? 'Unpaid during trial, payment due after trial ends' 
+                      : editFormData.isPaid ? 'Balance cleared' : 'Outstanding balance'}
                   </p>
                 </div>
                 <div className="flex items-center gap-2">
-                  <span className={`text-sm ${!editFormData.isPaid ? 'text-destructive font-medium' : 'text-muted-foreground'}`}>
-                    Unpaid
-                  </span>
-                  <Switch
-                    id="edit-paid-toggle"
-                    checked={editFormData.isPaid}
-                    onCheckedChange={(checked) => setEditFormData({ ...editFormData, isPaid: checked })}
-                  />
-                  <span className={`text-sm ${editFormData.isPaid ? 'text-primary font-medium' : 'text-muted-foreground'}`}>
-                    Paid
-                  </span>
+                  {editFormData.free_trial ? (
+                    <Badge variant="outline" className="border-green-500 text-green-500">
+                      Trial Mode
+                    </Badge>
+                  ) : (
+                    <>
+                      <span className={`text-sm ${!editFormData.isPaid ? 'text-destructive font-medium' : 'text-muted-foreground'}`}>
+                        Unpaid
+                      </span>
+                      <Switch
+                        id="edit-paid-toggle"
+                        checked={editFormData.isPaid}
+                        onCheckedChange={(checked) => setEditFormData({ ...editFormData, isPaid: checked })}
+                      />
+                      <span className={`text-sm ${editFormData.isPaid ? 'text-primary font-medium' : 'text-muted-foreground'}`}>
+                        Paid
+                      </span>
+                    </>
+                  )}
                 </div>
               </div>
               <div className="grid grid-cols-2 gap-4">
@@ -1716,6 +1973,145 @@ Thank you for your prompt attention! \u{1F64F}`;
             phone: selectedMember.phone,
           } : null}
         />
+
+        {/* Invoices Dialog - View all invoices for a customer */}
+        <Dialog open={isInvoicesOpen} onOpenChange={setIsInvoicesOpen}>
+          <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
+            <DialogHeader>
+              <DialogTitle className="flex items-center gap-2 text-lg font-bold">
+                <FileText className="h-5 w-5 text-indigo-600" />
+                Invoice History - {selectedMemberForInvoice?.name}
+              </DialogTitle>
+              <DialogDescription className="text-sm">
+                Phone: {selectedMemberForInvoice?.phone}
+              </DialogDescription>
+            </DialogHeader>
+            
+            <div className="mt-4 space-y-4">
+              {invoicesLoading ? (
+                <div className="flex items-center justify-center py-8">
+                  <Loader2 className="h-8 w-8 animate-spin text-indigo-600" />
+                  <span className="ml-2 text-sm text-muted-foreground">Loading invoices...</span>
+                </div>
+              ) : invoices.length === 0 ? (
+                <Card className="border-2 border-dashed border-gray-200 bg-gray-50/50">
+                  <CardContent className="py-8 text-center">
+                    <FileText className="h-12 w-12 mx-auto text-gray-400 mb-3" />
+                    <p className="text-sm font-medium text-gray-600">No invoices found</p>
+                    <p className="text-xs text-gray-500 mt-1">Invoices will appear here once generated</p>
+                  </CardContent>
+                </Card>
+              ) : (
+                <>
+                  {/* Summary Stats */}
+                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-4">
+                    <Card className="border-2 border-blue-200 bg-blue-50">
+                      <CardContent className="p-3 text-center">
+                        <p className="text-2xl font-extrabold text-blue-900">{invoices.length}</p>
+                        <p className="text-[10px] text-blue-700 font-bold mt-1">Total Invoices</p>
+                      </CardContent>
+                    </Card>
+                    <Card className="border-2 border-green-200 bg-green-50">
+                      <CardContent className="p-3 text-center">
+                        <p className="text-2xl font-extrabold text-green-900">
+                          {invoices.filter(inv => inv.status === 'paid').length}
+                        </p>
+                        <p className="text-[10px] text-green-700 font-bold mt-1">Paid</p>
+                      </CardContent>
+                    </Card>
+                    <Card className="border-2 border-amber-200 bg-amber-50">
+                      <CardContent className="p-3 text-center">
+                        <p className="text-2xl font-extrabold text-amber-900">
+                          {invoices.filter(inv => inv.status === 'draft' || inv.status === 'pending').length}
+                        </p>
+                        <p className="text-[10px] text-amber-700 font-bold mt-1">Unpaid</p>
+                      </CardContent>
+                    </Card>
+                    <Card className="border-2 border-purple-200 bg-purple-50">
+                      <CardContent className="p-3 text-center">
+                        <p className="text-2xl font-extrabold text-purple-900">
+                          {invoices.filter(inv => inv.is_recurring).length}
+                        </p>
+                        <p className="text-[10px] text-purple-700 font-bold mt-1">Recurring</p>
+                      </CardContent>
+                    </Card>
+                  </div>
+
+                  {/* Invoice List */}
+                  <ScrollArea className="max-h-[500px] pr-4">
+                    <div className="space-y-3">
+                      {invoices.map((invoice) => (
+                        <Card key={invoice.id} className={`border-2 ${invoice.status === 'paid' ? 'border-green-300 bg-green-50/30' : 'border-amber-300 bg-amber-50/30'}`}>
+                          <CardContent className="p-4">
+                            <div className="flex items-start justify-between gap-3">
+                              <div className="flex-1 min-w-0 space-y-2">
+                                <div className="flex items-center gap-2 flex-wrap">
+                                  <p className="text-sm font-bold text-gray-900 truncate">
+                                    Invoice #{invoice.invoice_number}
+                                  </p>
+                                  <Badge
+                                    variant="outline"
+                                    className={`text-[9px] font-bold px-1.5 py-0.5 h-5 ${
+                                      invoice.status === 'paid'
+                                        ? 'border-green-500 text-green-700 bg-green-100'
+                                        : 'border-amber-500 text-amber-700 bg-amber-100'
+                                    }`}
+                                  >
+                                    {invoice.status.toUpperCase()}
+                                  </Badge>
+                                  {invoice.is_recurring && (
+                                    <Badge variant="outline" className="text-[9px] bg-purple-100 text-purple-700 border-purple-300 font-bold px-1.5 py-0.5 h-5">
+                                      <RefreshCw className="h-2.5 w-2.5 mr-0.5" /> Recurring
+                                    </Badge>
+                                  )}
+                                </div>
+                                
+                                <div className="grid grid-cols-2 gap-x-4 gap-y-1 text-xs text-gray-700">
+                                  <div className="flex items-center gap-1">
+                                    <CalendarIcon className="h-3 w-3 text-gray-500" />
+                                    <span className="font-medium">Period:</span>
+                                    <span>{formatDate(new Date(invoice.billing_period_start))} - {formatDate(new Date(invoice.billing_period_end))}</span>
+                                  </div>
+                                  <div className="flex items-center gap-1">
+                                    <CalendarIcon className="h-3 w-3 text-gray-500" />
+                                    <span className="font-medium">Created:</span>
+                                    <span>{formatDate(new Date(invoice.created_at))}</span>
+                                  </div>
+                                  {invoice.paid_date && (
+                                    <div className="flex items-center gap-1">
+                                      <CalendarIcon className="h-3 w-3 text-green-600" />
+                                      <span className="font-medium">Paid:</span>
+                                      <span>{formatDate(new Date(invoice.paid_date))}</span>
+                                    </div>
+                                  )}
+                                </div>
+                              </div>
+                              
+                              <div className="text-right flex-shrink-0">
+                                <p className="text-lg font-extrabold text-gray-900">
+                                  {formatCurrency(Number(invoice.total_amount))}
+                                </p>
+                                <p className="text-[10px] text-gray-600 mt-1">
+                                  {invoice.status === 'paid' ? '✓ Paid in full' : '⏳ Pending'}
+                                </p>
+                              </div>
+                            </div>
+                          </CardContent>
+                        </Card>
+                      ))}
+                    </div>
+                  </ScrollArea>
+                </>
+              )}
+            </div>
+
+            <DialogFooter className="sticky bottom-0 bg-white pt-3 border-t">
+              <Button variant="outline" onClick={() => setIsInvoicesOpen(false)} className="border-2 font-semibold hover:bg-gray-50">
+                Close
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
 
         {/* Bulk Reminder Dialog */}
         <AlertDialog open={isBulkReminderOpen} onOpenChange={setIsBulkReminderOpen}>

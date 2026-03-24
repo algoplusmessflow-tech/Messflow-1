@@ -40,6 +40,7 @@ import Invoices from "./pages/Invoices";
 import DriverPortal from "./pages/DriverPortal";
 import CustomerPortal from "./pages/CustomerPortal";
 import SalesPortal from "./pages/SalesPortal";
+import SalesPersonLogin from "./pages/SalesPersonLogin";
 import KitchenPrep from "./pages/KitchenPrep";
 import KitchenPortal from "./pages/KitchenPortal";
 import GoogleCallback from "./pages/GoogleCallback";
@@ -248,7 +249,16 @@ const App = () => (
               <Route path="/:slug/customer" element={<CustomerPortal />} />
               <Route path="/:slug/driver" element={<DriverPortal />} />
               <Route path="/:slug/register" element={<CustomerPortal />} />
+              
+              {/* Sales Person Routes */}
+              <Route path="/sales-login" element={<SalesPersonLogin />} />
+              <Route path="/sales-portal" element={<SalesPortal />} />
+              <Route path="/sales-portal/*" element={<SalesPortal />} />
+              
+              {/* Legacy route - redirects to new login */}
               <Route path="/:slug/sales/:token" element={<SalesPortal />} />
+              <Route path="/:slug/sales" element={<SalesPortal />} />
+              
               <Route path="/:slug/kitchen" element={<KitchenPortal />} />
               <Route path="/auth/google/callback" element={<GoogleCallback />} />
               <Route path="*" element={<NotFound />} />

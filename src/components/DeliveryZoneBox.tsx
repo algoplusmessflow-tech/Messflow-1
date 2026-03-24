@@ -3,8 +3,17 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { MapPin, Plus, Merge, Users } from "lucide-react";
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { MapPin, Plus, Merge, Users, UserCheck, Loader2, X } from "lucide-react";
 import { MergeZonesModal } from "./MergeZonesModal";
+
+type Driver = {
+  id: string;
+  name: string;
+  phone: string;
+  status: string;
+};
 
 type DeliveryZone = {
   id: string;
@@ -23,6 +32,9 @@ type Props = {
   selectedZoneId: string | null;
   onSelectZone: (id: string | null) => void;
   onRefresh?: () => void;
+  drivers?: Driver[];
+  onAssignDriver?: (zoneId: string, driverId: string | null) => Promise<void>;
+  isAssigningDriver?: boolean;
 };
 
 export const DeliveryZoneBox: React.FC<Props> = ({
@@ -30,8 +42,35 @@ export const DeliveryZoneBox: React.FC<Props> = ({
   selectedZoneId,
   onSelectZone,
   onRefresh,
+  drivers = [],
+  onAssignDriver,
+  isAssigningDriver = false,
 }) => {
   const [isMergeOpen, setIsMergeOpen] = useState(false);
+  const [isAssignDialogOpen, setIsAssignDialogOpen] = useState(false);
+  const [selectedZone, setSelectedZone] = useState<DeliveryZone | null>(null);
+  const [selectedDriverId, setSelectedDriverId] = useState<string>("");
+
+  const handleOpenAssignDialog = (zone: DeliveryZone, e: React.MouseEvent) => {
+    e.stopPropagation();
+    setSelectedZone(zone);
+    setSelectedDriverId(zone.driver?.id || "");
+    setIsAssignDialogOpen(true);
+  };
+
+  const handleAssignDriver = async () => {
+    if (!selectedZone || !onAssignDriver) return;
+    try {
+      await onAssignDriver(selectedZone.id, selectedDriverId || null);
+      setIsAssignDialogOpen(false);
+      setSelectedZone(null);
+      setSelectedDriverId("");
+    } catch (error) {
+      console.error("Failed to assign driver:", error);
+    }
+  };
+
+  const activeDrivers = drivers.filter(d => d.status === 'active');
 
   return (
     <>
@@ -82,26 +121,51 @@ export const DeliveryZoneBox: React.FC<Props> = ({
                   onClick={() => onSelectZone(zone.id)}
                 >
                   <CardContent className="p-4">
-                    <div className="flex items-center justify-between">
+                    <div className="flex items-start justify-between gap-3">
                       <div className="flex-1 min-w-0">
-                        <h3 className="font-medium text-foreground truncate">
-                          {zone.name}
-                        </h3>
+                        <div className="flex items-center gap-2">
+                          <h3 className="font-medium text-foreground truncate">
+                            {zone.name}
+                          </h3>
+                          {zone.driver && (
+                            <Badge variant="secondary" className="text-xs flex items-center gap-1">
+                              <UserCheck className="h-3 w-3" />
+                              {zone.driver.name}
+                            </Badge>
+                          )}
+                          {!zone.driver && (
+                            <Badge variant="outline" className="text-xs text-muted-foreground">
+                              No driver
+                            </Badge>
+                          )}
+                        </div>
                         <div className="flex items-center gap-2 mt-1">
                           <Badge variant="outline" className="text-xs flex items-center gap-1">
                             <Users className="h-3 w-3" />
                             {zone.member_count || 0}
                           </Badge>
-                          {zone.driver && (
-                            <Badge variant="secondary" className="text-xs">
-                              {zone.driver.name}
-                            </Badge>
-                          )}
                         </div>
                       </div>
-                      <Badge variant="outline" className="text-xs max-w-[120px] truncate">
-                        {zone.description || "No description"}
-                      </Badge>
+                      <div className="flex items-center gap-2">
+                        <Badge variant="outline" className="text-xs max-w-[120px] truncate">
+                          {zone.description || "No description"}
+                        </Badge>
+                        {onAssignDriver && (
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className="h-8 w-8 flex-shrink-0"
+                            onClick={(e) => handleOpenAssignDialog(zone, e)}
+                            title={zone.driver ? "Change driver" : "Assign driver"}
+                          >
+                            {isAssigningDriver ? (
+                              <Loader2 className="h-4 w-4 animate-spin" />
+                            ) : (
+                              <UserCheck className="h-4 w-4" />
+                            )}
+                          </Button>
+                        )}
+                      </div>
                     </div>
                   </CardContent>
                 </Card>
@@ -124,6 +188,89 @@ export const DeliveryZoneBox: React.FC<Props> = ({
           onRefresh?.();
         }}
       />
+
+      <Dialog open={isAssignDialogOpen} onOpenChange={setIsAssignDialogOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <UserCheck className="h-5 w-5" />
+              {selectedZone?.driver ? 'Change Driver' : 'Assign Driver'}
+            </DialogTitle>
+          </DialogHeader>
+          
+          <div className="space-y-4">
+            {selectedZone && (
+              <div className="p-3 bg-muted rounded-lg">
+                <p className="font-medium">{selectedZone.name}</p>
+                <p className="text-sm text-muted-foreground">
+                  {selectedZone.member_count || 0} members
+                </p>
+              </div>
+            )}
+
+            <div className="space-y-2">
+              <label className="text-sm font-medium">Select Driver</label>
+              <Select 
+                value={selectedDriverId || "__none__"} 
+                onValueChange={(val) => setSelectedDriverId(val === "__none__" ? "" : val)}
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="Choose a driver..." />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="__none__">No Driver</SelectItem>
+                  {activeDrivers.length === 0 ? (
+                    <div className="p-2 text-sm text-muted-foreground text-center">
+                      No active drivers available
+                    </div>
+                  ) : (
+                    activeDrivers.map(driver => (
+                      <SelectItem key={driver.id} value={driver.id}>
+                        <div className="flex items-center gap-2">
+                          <span>{driver.name}</span>
+                          <span className="text-muted-foreground text-xs">
+                            ({driver.phone})
+                          </span>
+                        </div>
+                      </SelectItem>
+                    ))
+                  )}
+                </SelectContent>
+              </Select>
+              <p className="text-xs text-muted-foreground">
+                Select a driver to assign to this zone, or choose "No Driver" to remove the current assignment.
+              </p>
+            </div>
+
+            <div className="flex gap-2 pt-2">
+              <Button
+                variant="outline"
+                onClick={() => setIsAssignDialogOpen(false)}
+                className="flex-1"
+              >
+                Cancel
+              </Button>
+              <Button
+                onClick={handleAssignDriver}
+                disabled={isAssigningDriver}
+                className="flex-1"
+              >
+                {isAssigningDriver ? (
+                  <>
+                    <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                    Assigning...
+                  </>
+                ) : (
+                  <>
+                    <UserCheck className="h-4 w-4 mr-2" />
+                    {selectedZone?.driver ? 'Update' : 'Assign'}
+                  </>
+                )}
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
     </>
   );
 };

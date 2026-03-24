@@ -83,7 +83,7 @@ All colors MUST be HSL.
     --glass-text: 0 0% 100%;
     --modal-title: 0 0% 100%;
     --modal-label: 0 0% 100%;
-    --modal-input-text: 0 0% 100%;
+    --modal-input-text: 0 0% 20%;
   }
 
   .dark {
