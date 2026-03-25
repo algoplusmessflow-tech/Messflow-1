@@ -219,6 +219,10 @@ export default function DriverPortal() {
   }, [isAuthenticated, driver, resolvedOwnerId]);
 
   const openCompleteDialog = (member: ZoneWithPerimeter) => {
+    // Revoke any existing preview URL before opening new dialog
+    if (proofPhotoPreview && proofPhotoPreview.startsWith('blob:')) {
+      URL.revokeObjectURL(proofPhotoPreview);
+    }
     setSelectedMember(member);
     setProofPhoto(null);
     setProofPhotoPreview(null);
@@ -230,59 +234,122 @@ export default function DriverPortal() {
     setIsCompleteDialogOpen(true);
   };
 
-  const compressImage = (file: File, maxWidth = 1200, quality = 0.7): Promise<{ compressedFile: File; previewUrl: string }> => {
-    return new Promise((resolve, reject) => {
+  // Compress + geotag: stamp GPS coords onto the image as a visible overlay
+  const compressAndGeotag = (
+    file: File,
+    lat?: number,
+    lng?: number
+  ): Promise<File> => {
+    return new Promise((resolve) => {
+      const MAX_WIDTH = 1080;
+      const QUALITY = 0.75;
       const img = new Image();
-      const url = URL.createObjectURL(file);
+      const objectUrl = URL.createObjectURL(file);
+
       img.onload = () => {
-        URL.revokeObjectURL(url);
-        const canvas = document.createElement('canvas');
+        URL.revokeObjectURL(objectUrl);
+
         let w = img.width;
         let h = img.height;
-        if (w > maxWidth) {
-          h = Math.round((h * maxWidth) / w);
-          w = maxWidth;
+        if (w > MAX_WIDTH) {
+          h = Math.round((h * MAX_WIDTH) / w);
+          w = MAX_WIDTH;
         }
+
+        const canvas = document.createElement('canvas');
         canvas.width = w;
         canvas.height = h;
         const ctx = canvas.getContext('2d');
-        if (!ctx) { reject(new Error('Canvas not supported')); return; }
+        if (!ctx) { resolve(file); return; }
+
         ctx.drawImage(img, 0, 0, w, h);
+
+        // Stamp GPS + timestamp overlay if coordinates available
+        if (lat !== undefined && lng !== undefined) {
+          const now = new Date();
+          const stamp = [
+            `GPS: ${lat.toFixed(6)}, ${lng.toFixed(6)}`,
+            now.toLocaleString(),
+          ];
+          const fontSize = Math.max(12, Math.round(w / 40));
+          const padding = Math.round(fontSize * 0.6);
+          const lineH = fontSize + padding;
+          const boxH = stamp.length * lineH + padding * 2;
+          const boxW = w;
+
+          // Semi-transparent black bar at bottom
+          ctx.fillStyle = 'rgba(0,0,0,0.55)';
+          ctx.fillRect(0, h - boxH, boxW, boxH);
+
+          ctx.font = `bold ${fontSize}px monospace`;
+          ctx.fillStyle = '#ffffff';
+          ctx.textBaseline = 'top';
+          stamp.forEach((line, i) => {
+            ctx.fillText(line, padding, h - boxH + padding + i * lineH);
+          });
+        }
+
         canvas.toBlob(
           (blob) => {
-            if (!blob) { reject(new Error('Compression failed')); return; }
-            const compressedFile = new File([blob], file.name, { type: 'image/jpeg' });
-            const previewUrl = canvas.toDataURL('image/jpeg', 0.5);
-            canvas.width = 0; canvas.height = 0; // Free canvas memory
-            resolve({ compressedFile, previewUrl });
+            canvas.width = 0;
+            canvas.height = 0;
+            if (!blob) { resolve(file); return; }
+            resolve(new File([blob], 'proof.jpg', { type: 'image/jpeg' }));
           },
           'image/jpeg',
-          quality
+          QUALITY
         );
       };
-      img.onerror = () => { URL.revokeObjectURL(url); reject(new Error('Failed to load image')); };
-      img.src = url;
+
+      img.onerror = () => {
+        URL.revokeObjectURL(objectUrl);
+        resolve(file);
+      };
+
+      img.src = objectUrl;
     });
   };
 
   const handlePhotoSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
-    if (file.size > 10 * 1024 * 1024) {
-      toast.error('Photo must be less than 10MB');
+
+    // Revoke previous preview URL
+    if (proofPhotoPreview && proofPhotoPreview.startsWith('blob:')) {
+      URL.revokeObjectURL(proofPhotoPreview);
+    }
+
+    if (file.size > 20 * 1024 * 1024) {
+      toast.error('Photo must be less than 20MB');
       return;
     }
+
     try {
-      // Compress image to reduce memory usage (fixes "low memory" on mobile)
-      const { compressedFile, previewUrl } = await compressImage(file, 1200, 0.7);
-      setProofPhoto(compressedFile);
+      // Stamp current driver GPS onto photo if already captured
+      const geotagged = await compressAndGeotag(
+        file,
+        driverLocation?.lat,
+        driverLocation?.lng
+      );
+      const previewUrl = URL.createObjectURL(geotagged);
+      setProofPhoto(geotagged);
       setProofPhotoPreview(previewUrl);
+      if (driverLocation) {
+        toast.success('Photo geotagged with your current location');
+      } else {
+        toast.info('Capture location first to geotag the photo');
+      }
     } catch {
-      // Fallback: use original file with object URL (no base64 in memory)
+      const previewUrl = URL.createObjectURL(file);
       setProofPhoto(file);
-      setProofPhotoPreview(URL.createObjectURL(file));
+      setProofPhotoPreview(previewUrl);
     }
+
+    e.target.value = '';
   };
+
+  // Re-geotag photo when location is captured after photo is already selected
+  const handleCaptureLocationAndRetag = handleCaptureLocation;
 
   const handleCaptureLocation = async () => {
     setIsCapturingLocation(true);
@@ -297,34 +364,43 @@ export default function DriverPortal() {
           lat: selectedMember.location_lat,
           lng: selectedMember.location_lng
         };
-        
         const validation = checkLocationWithinPerimeter(result.coords, memberCoords, 0.5);
         setLocationMatched(validation.isWithinPerimeter);
         setDistanceKm(validation.distanceKm);
-        
         if (validation.isWithinPerimeter) {
-          toast.success('Location verified! You are within the delivery area.');
+          toast.success('Location verified — within delivery area');
         } else {
-          toast.warning(`Location mismatch: ${formatDistance(validation.distanceKm)} from customer location`);
+          toast.warning(`${formatDistance(validation.distanceKm)} from customer location`);
         }
       } else if (selectedMember?.area?.center_lat && selectedMember?.area?.center_lng) {
-        const zoneCenter = {
-          lat: selectedMember.area.center_lat,
-          lng: selectedMember.area.center_lng
-        };
+        const zoneCenter = { lat: selectedMember.area.center_lat, lng: selectedMember.area.center_lng };
         const thresholdKm = selectedMember.area.radius_km || 5;
         const validation = checkLocationWithinPerimeter(result.coords, zoneCenter, thresholdKm);
         setLocationMatched(validation.isWithinPerimeter);
         setDistanceKm(validation.distanceKm);
-        
         if (validation.isWithinPerimeter) {
-          toast.success('Location verified! You are within the delivery zone.');
+          toast.success('Location verified — within delivery zone');
         } else {
-          toast.warning(`Location mismatch: ${formatDistance(validation.distanceKm)} from zone center`);
+          toast.warning(`${formatDistance(validation.distanceKm)} from zone center`);
         }
       } else {
-        toast.info('No location data available for this customer to validate against.');
         setLocationMatched(null);
+        toast.info('Location captured (no customer GPS to validate against)');
+      }
+
+      // Re-geotag existing photo with the fresh coordinates
+      if (proofPhoto) {
+        try {
+          const retagged = await compressAndGeotag(proofPhoto, result.coords.lat, result.coords.lng);
+          if (proofPhotoPreview && proofPhotoPreview.startsWith('blob:')) {
+            URL.revokeObjectURL(proofPhotoPreview);
+          }
+          setProofPhoto(retagged);
+          setProofPhotoPreview(URL.createObjectURL(retagged));
+          toast.success('Photo updated with GPS stamp');
+        } catch {
+          // non-critical, keep existing photo
+        }
       }
     } catch (error: any) {
       setLocationError(error.message);
@@ -358,9 +434,15 @@ export default function DriverPortal() {
           ? { ...m, delivery_completed_today: true } 
           : m
       ));
-      
+
+      // Revoke preview URL to free memory
+      if (proofPhotoPreview && proofPhotoPreview.startsWith('blob:')) {
+        URL.revokeObjectURL(proofPhotoPreview);
+      }
       setIsCompleteDialogOpen(false);
       setSelectedMember(null);
+      setProofPhoto(null);
+      setProofPhotoPreview(null);
     } catch (error: any) {
       toast.error(error.message || 'Failed to complete delivery');
     } finally {
@@ -564,7 +646,16 @@ export default function DriverPortal() {
         )}
       </main>
 
-      <Dialog open={isCompleteDialogOpen} onOpenChange={setIsCompleteDialogOpen}>
+      <Dialog open={isCompleteDialogOpen} onOpenChange={(open) => {
+        if (!open) {
+          if (proofPhotoPreview && proofPhotoPreview.startsWith('blob:')) {
+            URL.revokeObjectURL(proofPhotoPreview);
+          }
+          setProofPhotoPreview(null);
+          setProofPhoto(null);
+        }
+        setIsCompleteDialogOpen(open);
+      }}>
         <DialogContent className="max-w-md max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
@@ -590,25 +681,90 @@ export default function DriverPortal() {
               </div>
             )}
 
+            {/* STEP 1: Location first */}
             <div className="space-y-2">
-              <Label>Photo Proof (Required)</Label>
-              <div 
+              <Label className="flex items-center gap-1.5">
+                <span className="bg-primary text-primary-foreground rounded-full w-5 h-5 text-xs flex items-center justify-center font-bold">1</span>
+                Capture Location
+              </Label>
+              <div className="p-3 bg-muted rounded-lg space-y-2">
+                {locationError ? (
+                  <div className="flex items-start gap-2 text-destructive">
+                    <AlertTriangle className="h-4 w-4 mt-0.5" />
+                    <p className="text-sm">{locationError}</p>
+                  </div>
+                ) : driverLocation ? (
+                  <div className="space-y-1">
+                    <div className="flex items-center gap-2 text-green-600">
+                      <CheckCircle className="h-4 w-4" />
+                      <span className="text-sm font-medium">Location captured</span>
+                    </div>
+                    <p className="text-xs font-mono text-muted-foreground">
+                      {driverLocation.lat.toFixed(6)}, {driverLocation.lng.toFixed(6)}
+                    </p>
+                    {distanceKm !== null && (
+                      <p className="text-xs text-muted-foreground">
+                        {formatDistance(distanceKm)} from customer
+                        {locationMatched ? ' ✓ Within range' : ' ⚠ Outside range'}
+                      </p>
+                    )}
+                    {locationMatched === false && (
+                      <div className="flex items-start gap-2 text-amber-600 bg-amber-50 p-2 rounded">
+                        <AlertTriangle className="h-4 w-4 mt-0.5" />
+                        <p className="text-xs">Delivery will be flagged as location mismatch</p>
+                      </div>
+                    )}
+                  </div>
+                ) : (
+                  <div className="flex items-start gap-2 text-muted-foreground">
+                    <MapPinOff className="h-4 w-4 mt-0.5" />
+                    <p className="text-sm">Capture location to geotag your photo</p>
+                  </div>
+                )}
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={handleCaptureLocation}
+                  disabled={isCapturingLocation}
+                  className="w-full"
+                >
+                  {isCapturingLocation ? (
+                    <><Loader2 className="h-4 w-4 mr-2 animate-spin" />Getting location...</>
+                  ) : (
+                    <><MapPin className="h-4 w-4 mr-2" />{driverLocation ? 'Refresh Location' : 'Capture Location'}</>
+                  )}
+                </Button>
+              </div>
+            </div>
+
+            {/* STEP 2: Photo with GPS stamp */}
+            <div className="space-y-2">
+              <Label className="flex items-center gap-1.5">
+                <span className="bg-primary text-primary-foreground rounded-full w-5 h-5 text-xs flex items-center justify-center font-bold">2</span>
+                Photo Proof
+                {driverLocation && (
+                  <span className="text-[10px] text-green-600 font-medium ml-1">(GPS will be stamped)</span>
+                )}
+              </Label>
+              <div
                 className="border-2 border-dashed rounded-lg p-4 text-center cursor-pointer hover:bg-muted/50 transition-colors"
                 onClick={() => fileInputRef.current?.click()}
               >
                 {proofPhotoPreview ? (
                   <div className="space-y-2">
-                    <img 
-                      src={proofPhotoPreview} 
-                      alt="Proof" 
+                    <img
+                      src={proofPhotoPreview}
+                      alt="Proof"
                       className="max-h-48 mx-auto rounded-lg object-contain"
                     />
-                    <p className="text-sm text-muted-foreground">Tap to change photo</p>
+                    <p className="text-xs text-muted-foreground">Tap to retake photo</p>
                   </div>
                 ) : (
                   <div className="space-y-2">
                     <Camera className="h-10 w-10 mx-auto text-muted-foreground" />
-                    <p className="text-sm text-muted-foreground">Tap to take or upload photo</p>
+                    <p className="text-sm text-muted-foreground">
+                      {driverLocation ? 'Tap to take photo — GPS will be stamped on it' : 'Tap to take photo'}
+                    </p>
                   </div>
                 )}
               </div>
@@ -623,100 +779,37 @@ export default function DriverPortal() {
             </div>
 
             <div className="space-y-2">
-              <Label>Location Verification</Label>
-              <div className="p-3 bg-muted rounded-lg space-y-2">
-                {locationError ? (
-                  <div className="flex items-start gap-2 text-destructive">
-                    <AlertTriangle className="h-4 w-4 mt-0.5" />
-                    <p className="text-sm">{locationError}</p>
-                  </div>
-                ) : driverLocation ? (
-                  <div className="space-y-2">
-                    <div className="flex items-center gap-2 text-green-600">
-                      <CheckCircle className="h-4 w-4" />
-                      <span className="text-sm font-medium">Location captured</span>
-                    </div>
-                    {distanceKm !== null && (
-                      <p className="text-xs text-muted-foreground">
-                        Distance: {formatDistance(distanceKm)}
-                        {locationMatched ? ' (Within perimeter)' : ' (Outside perimeter)'}
-                      </p>
-                    )}
-                    {locationMatched === false && (
-                      <div className="flex items-start gap-2 text-amber-600 bg-amber-50 p-2 rounded">
-                        <AlertTriangle className="h-4 w-4 mt-0.5" />
-                        <p className="text-xs">
-                          Delivery will be flagged as location mismatch
-                        </p>
-                      </div>
-                    )}
-                  </div>
-                ) : (
-                  <div className="flex items-start gap-2 text-muted-foreground">
-                    <MapPinOff className="h-4 w-4 mt-0.5" />
-                    <p className="text-sm">No location captured yet</p>
-                  </div>
-                )}
-                <Button 
-                  variant="outline" 
-                  size="sm" 
-                  onClick={handleCaptureLocation}
-                  disabled={isCapturingLocation}
-                  className="w-full"
-                >
-                  {isCapturingLocation ? (
-                    <>
-                      <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                      Getting location...
-                    </>
-                  ) : (
-                    <>
-                      <MapPin className="h-4 w-4 mr-2" />
-                      {driverLocation ? 'Update Location' : 'Capture Current Location'}
-                    </>
-                  )}
-                </Button>
-              </div>
-            </div>
-
-            <div className="space-y-2">
               <Label htmlFor="notes">Notes (Optional)</Label>
               <Textarea
                 id="notes"
                 value={notes}
                 onChange={(e) => setNotes(e.target.value)}
                 placeholder="Any special notes about this delivery..."
-                rows={3}
+                rows={2}
               />
             </div>
 
             <div className="flex gap-2 pt-2">
-              <Button 
-                variant="outline" 
+              <Button
+                variant="outline"
                 onClick={() => setIsCompleteDialogOpen(false)}
                 className="flex-1"
               >
                 Cancel
               </Button>
-              <Button 
+              <Button
                 onClick={handleCompleteDelivery}
                 disabled={isCompleting || !proofPhoto}
                 className="flex-1"
               >
                 {isCompleting ? (
-                  <>
-                    <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                    Saving...
-                  </>
+                  <><Loader2 className="h-4 w-4 mr-2 animate-spin" />Saving...</>
                 ) : (
-                  <>
-                    <CheckCircle className="h-4 w-4 mr-2" />
-                    Complete
-                  </>
+                  <><CheckCircle className="h-4 w-4 mr-2" />Complete</>
                 )}
               </Button>
             </div>
-            
+
             {!proofPhoto && (
               <p className="text-xs text-center text-muted-foreground">
                 Photo proof is required to complete delivery

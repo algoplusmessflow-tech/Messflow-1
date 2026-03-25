@@ -474,10 +474,10 @@ export default function DeliveryManagement() {
             ) : (
               <ScrollArea className="space-y-3" style={{ maxHeight: '300px' }}>
                 {drivers.map((driver) => (
-                  <Card key={driver.id} className="cursor-pointer hover:shadow-md transition-all">
-                    <CardContent className="p-4">
-                      <div className="flex items-center justify-between">
-                        <div>
+                  <Card key={driver.id} className="overflow-hidden cursor-pointer hover:shadow-md transition-all">
+                    <CardContent className="p-3 sm:p-4">
+                      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
+                        <div className="flex-1 min-w-0">
                           <h3 className="font-medium text-foreground">{driver.name}</h3>
                           <p className="text-sm text-muted-foreground flex items-center gap-1">
                             <Phone className="h-3 w-3" />
