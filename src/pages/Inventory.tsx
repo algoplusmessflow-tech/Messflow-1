@@ -453,7 +453,8 @@ function KitchenRequests() {
       }));
     },
     enabled: !!user,
-    staleTime: 15000,
+    staleTime: 0,
+    refetchOnMount: true,
   });
 
   // Group pending rows into batches by (created_at minute + date)
@@ -489,7 +490,7 @@ function KitchenRequests() {
     }, {})
   ).sort((a, b) => b.created_at.localeCompare(a.created_at)).slice(0, 20);
 
-  const [showHistory, setShowHistory] = useState(false);
+  const [showHistoryDialog, setShowHistoryDialog] = useState(false);
   const [selectedBatch, setSelectedBatch] = useState<BatchedRequest | null>(null);
   // editable quantities per row id
   const [editQty, setEditQty] = useState<Record<string, number>>({});
@@ -507,7 +508,6 @@ function KitchenRequests() {
     try {
       for (const r of batch.rows) {
         const qty = editQty[r.id] ?? r.quantity_used ?? 0;
-        // Reduce stock if linked to inventory
         if (r.inventory_id && qty > 0) {
           const invItem = inventory.find(i => i.id === r.inventory_id);
           if (invItem) {
@@ -515,16 +515,19 @@ function KitchenRequests() {
             await supabase.from('inventory').update({ quantity: newQty }).eq('id', r.inventory_id);
           }
         }
-        // Update qty if changed, mark approved
+        // Replace notes entirely to avoid double-appending
+        const baseNotes = r.notes?.replace(' [APPROVED]', '').trim() ?? '';
         await supabase
           .from('inventory_consumption')
-          .update({ quantity_used: qty, notes: r.notes + ' [APPROVED]' })
+          .update({ quantity_used: qty, notes: baseNotes + ' [APPROVED]' })
           .eq('id', r.id);
       }
-      queryClient.invalidateQueries({ queryKey: ['kitchen-requests'] });
-      queryClient.invalidateQueries({ queryKey: ['inventory'] });
-      toast.success(`${batch.rows.length} item(s) approved`);
+      // Close dialog first, then invalidate so UI refreshes cleanly
       setSelectedBatch(null);
+      setEditQty({});
+      await queryClient.invalidateQueries({ queryKey: ['kitchen-requests', user?.id] });
+      await queryClient.invalidateQueries({ queryKey: ['inventory'] });
+      toast.success(`${batch.rows.length} item(s) approved — stock updated`);
     } catch (err: any) {
       toast.error('Failed: ' + err.message);
     } finally {
@@ -561,7 +564,21 @@ function KitchenRequests() {
     w.document.close();
   };
 
-  if (pendingBatches.length === 0 && approvedBatches.length === 0) return null;
+  if (pendingBatches.length === 0 && approvedBatches.length === 0 && !isLoading) return null;
+
+  // All batches combined for history dialog
+  const allBatches: BatchedRequest[] = Object.values(
+    requests
+      .filter((r: any) =>
+        r.notes?.includes('Kitchen request') || r.notes?.includes('SPECIAL REQUEST')
+      )
+      .reduce((acc: Record<string, BatchedRequest>, r: any) => {
+        const key = (r.created_at?.slice(0, 16) ?? '') + '_' + (r.date ?? '');
+        if (!acc[key]) acc[key] = { batchKey: key, date: r.date, created_at: r.created_at, rows: [] };
+        acc[key].rows.push(r);
+        return acc;
+      }, {})
+  ).sort((a, b) => b.created_at.localeCompare(a.created_at));
 
   return (
     <>
@@ -575,11 +592,9 @@ function KitchenRequests() {
                 <Badge variant="secondary" className="text-[10px]">{pendingBatches.length} pending</Badge>
               )}
             </h3>
-            {approvedBatches.length > 0 && (
-              <Button variant="ghost" size="sm" className="h-7 text-xs" onClick={() => setShowHistory(!showHistory)}>
-                <Clock className="h-3 w-3 mr-1" />{showHistory ? 'Hide' : 'History'}
-              </Button>
-            )}
+            <Button variant="outline" size="sm" className="h-7 text-xs" onClick={() => setShowHistoryDialog(true)}>
+              <Clock className="h-3 w-3 mr-1" /> History
+            </Button>
           </div>
 
           {isLoading ? (
@@ -619,30 +634,79 @@ function KitchenRequests() {
               ))}
             </div>
           )}
-
-          {/* Approved History */}
-          {showHistory && approvedBatches.length > 0 && (
-            <div className="mt-4 pt-3 border-t border-border space-y-1">
-              <p className="text-xs font-medium text-muted-foreground mb-2">Approved History</p>
-              {approvedBatches.map((batch) => (
-                <div
-                  key={batch.batchKey}
-                  className="flex items-center justify-between py-1.5 text-xs text-muted-foreground cursor-pointer hover:text-foreground"
-                  onClick={() => openBatch(batch)}
-                >
-                  <span>{batch.rows.length} items · {batch.date}</span>
-                  <div className="flex items-center gap-1">
-                    <Badge variant="outline" className="text-[9px] border-green-500 text-green-600">Approved</Badge>
-                    <Button variant="ghost" size="icon" className="h-6 w-6" onClick={(e) => { e.stopPropagation(); handlePrintBatch(batch); }}>
-                      <Printer className="h-3 w-3" />
-                    </Button>
-                  </div>
-                </div>
-              ))}
-            </div>
-          )}
         </CardContent>
       </Card>
+
+      {/* Request History Dialog */}
+      <Dialog open={showHistoryDialog} onOpenChange={setShowHistoryDialog}>
+        <DialogContent className="max-w-lg max-h-[85vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Clock className="h-4 w-4 text-primary" />
+              Request History
+            </DialogTitle>
+          </DialogHeader>
+          {isLoading ? (
+            <div className="space-y-2">{[1,2,3].map(i => <Skeleton key={i} className="h-14 w-full" />)}</div>
+          ) : allBatches.length === 0 ? (
+            <div className="text-center py-10 text-muted-foreground">
+              <Package className="h-10 w-10 mx-auto mb-2 opacity-30" />
+              <p className="text-sm">No requests yet</p>
+            </div>
+          ) : (
+            <div className="space-y-2">
+              {allBatches.map((batch) => {
+                const isApproved = batch.rows.every(r => r.notes?.includes('[APPROVED]'));
+                return (
+                  <div
+                    key={batch.batchKey}
+                    className="flex items-center justify-between p-3 rounded-lg border border-border hover:bg-muted/30 cursor-pointer transition-colors"
+                    onClick={() => { openBatch(batch); setShowHistoryDialog(false); }}
+                  >
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2">
+                        <p className="text-sm font-medium">{batch.date}</p>
+                        <Badge
+                          variant="outline"
+                          className={`text-[9px] ${
+                            isApproved
+                              ? 'border-green-500 text-green-600'
+                              : 'border-amber-400 text-amber-600'
+                          }`}
+                        >
+                          {isApproved ? 'Approved' : 'Pending'}
+                        </Badge>
+                      </div>
+                      <p className="text-xs text-muted-foreground">
+                        {batch.rows.length} item{batch.rows.length > 1 ? 's' : ''} · {new Date(batch.created_at).toLocaleTimeString()}
+                      </p>
+                      <div className="flex flex-wrap gap-1 mt-1">
+                        {batch.rows.slice(0, 3).map((r, i) => (
+                          <span key={i} className="text-[10px] bg-muted px-1.5 py-0.5 rounded-full">
+                            {resolveItemName(r, inventory)}
+                          </span>
+                        ))}
+                        {batch.rows.length > 3 && (
+                          <span className="text-[10px] text-muted-foreground">+{batch.rows.length - 3} more</span>
+                        )}
+                      </div>
+                    </div>
+                    <Button
+                      variant="ghost" size="icon" className="h-7 w-7 flex-shrink-0 ml-2"
+                      onClick={(e) => { e.stopPropagation(); handlePrintBatch(batch); }}
+                    >
+                      <Printer className="h-3.5 w-3.5" />
+                    </Button>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setShowHistoryDialog(false)} className="w-full">Close</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       {/* Request Detail Dialog */}
       <Dialog open={!!selectedBatch} onOpenChange={(open) => !open && setSelectedBatch(null)}>
@@ -659,7 +723,6 @@ function KitchenRequests() {
               <p className="text-xs text-muted-foreground">
                 Submitted: {new Date(selectedBatch.created_at).toLocaleString()}
               </p>
-
               <div className="rounded-lg border border-border divide-y divide-border">
                 {selectedBatch.rows.map((r) => {
                   const name = resolveItemName(r, inventory);
@@ -676,9 +739,7 @@ function KitchenRequests() {
                       ) : (
                         <div className="flex items-center gap-1.5">
                           <Input
-                            type="number"
-                            min={0}
-                            step="0.1"
+                            type="number" min={0} step="0.1"
                             className="w-20 h-8 text-sm text-center"
                             value={editQty[r.id] ?? r.quantity_used ?? 0}
                             onChange={(e) => setEditQty({ ...editQty, [r.id]: parseFloat(e.target.value) || 0 })}
@@ -690,7 +751,6 @@ function KitchenRequests() {
                   );
                 })}
               </div>
-
               {selectedBatch.rows[0]?.notes?.includes('[APPROVED]') && (
                 <Badge variant="outline" className="border-green-500 text-green-600 w-full justify-center py-1">
                   <CheckCircle className="h-3.5 w-3.5 mr-1.5" /> Approved
@@ -700,19 +760,11 @@ function KitchenRequests() {
           )}
 
           <DialogFooter className="gap-2 pt-2">
-            <Button
-              variant="outline"
-              className="flex-1"
-              onClick={() => selectedBatch && handlePrintBatch(selectedBatch)}
-            >
+            <Button variant="outline" className="flex-1" onClick={() => selectedBatch && handlePrintBatch(selectedBatch)}>
               <Printer className="h-4 w-4 mr-1.5" /> Print
             </Button>
             {selectedBatch && !selectedBatch.rows[0]?.notes?.includes('[APPROVED]') && (
-              <Button
-                className="flex-1"
-                onClick={() => selectedBatch && handleApproveBatch(selectedBatch)}
-                disabled={approving}
-              >
+              <Button className="flex-1" onClick={() => selectedBatch && handleApproveBatch(selectedBatch)} disabled={approving}>
                 {approving ? <Loader2 className="h-4 w-4 animate-spin mr-1.5" /> : <CheckCircle className="h-4 w-4 mr-1.5" />}
                 Approve All
               </Button>

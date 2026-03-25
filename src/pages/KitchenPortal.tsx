@@ -53,6 +53,7 @@ export default function KitchenPortal() {
   const [inventoryItems, setInventoryItems] = useState<{ id: string; name: string; unit: string; available_qty: number }[]>([]);
   const [inventoryLoading, setInventoryLoading] = useState(false);
   const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
+  const [myRequests, setMyRequests] = useState<{ id: string; notes: string; quantity_used: number; inventory_id: string | null; created_at: string; date: string }[]>([]);
   
   // Label content filters
   const [showNameOnLabel, setShowNameOnLabel] = useState(true);
@@ -83,6 +84,36 @@ export default function KitchenPortal() {
     };
     fetchBusiness();
   }, [slug]);
+
+  // Fetch & subscribe to today's requests for live approval status
+  useEffect(() => {
+    if (!ownerId) return;
+    const dateStr = format(selectedDate, 'yyyy-MM-dd');
+
+    const fetchRequests = async () => {
+      const { data } = await supabase
+        .from('inventory_consumption')
+        .select('id, notes, quantity_used, inventory_id, created_at, date')
+        .eq('owner_id', ownerId)
+        .eq('date', dateStr)
+        .order('created_at', { ascending: false });
+      setMyRequests((data || []).filter((r: any) =>
+        r.notes?.includes('Kitchen request') || r.notes?.includes('SPECIAL REQUEST')
+      ));
+    };
+
+    fetchRequests();
+
+    const channel = supabase
+      .channel('requests-status')
+      .on('postgres_changes', {
+        event: 'UPDATE', schema: 'public', table: 'inventory_consumption',
+        filter: `owner_id=eq.${ownerId}`,
+      }, () => fetchRequests())
+      .subscribe();
+
+    return () => { supabase.removeChannel(channel); };
+  }, [ownerId, selectedDate]);
 
   // Fetch inventory with real-time updates
   useEffect(() => {
@@ -586,6 +617,70 @@ export default function KitchenPortal() {
             )}
           </>
         )}
+
+        {/* Today's Request Status */}
+        {myRequests.length > 0 && (() => {
+          // Group by batch (created_at minute)
+          const batches: Record<string, typeof myRequests> = {};
+          myRequests.forEach(r => {
+            const key = r.created_at?.slice(0, 16);
+            if (!batches[key]) batches[key] = [];
+            batches[key].push(r);
+          });
+          return (
+            <Card className="border-0 shadow-sm">
+              <CardHeader className="pb-2">
+                <CardTitle className="text-sm font-medium flex items-center gap-2">
+                  <Package className="h-4 w-4 text-primary" />
+                  Today's Requests — {format(selectedDate, 'dd MMM')}
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-2">
+                {Object.entries(batches).map(([key, rows]) => {
+                  const allApproved = rows.every(r => r.notes?.includes('[APPROVED]'));
+                  return (
+                    <div key={key} className={`rounded-lg border p-3 ${
+                      allApproved ? 'border-green-500/40 bg-green-500/5' : 'border-amber-400/40 bg-amber-50/30'
+                    }`}>
+                      <div className="flex items-center justify-between mb-1.5">
+                        <span className="text-xs text-muted-foreground">
+                          {new Date(rows[0].created_at).toLocaleTimeString()} · {rows.length} item{rows.length > 1 ? 's' : ''}
+                        </span>
+                        <Badge
+                          variant="outline"
+                          className={`text-[10px] font-semibold ${
+                            allApproved
+                              ? 'border-green-500 text-green-600 bg-green-50'
+                              : 'border-amber-400 text-amber-600 bg-amber-50'
+                          }`}
+                        >
+                          {allApproved ? (
+                            <><CheckCircle className="h-3 w-3 mr-1" />Approved</>
+                          ) : (
+                            <><Clock className="h-3 w-3 mr-1" />Pending</>  
+                          )}
+                        </Badge>
+                      </div>
+                      <div className="flex flex-wrap gap-1">
+                        {rows.map((r, i) => {
+                          const name = r.inventory_id
+                            ? inventoryItems.find(it => it.id === r.inventory_id)?.name
+                              ?? r.notes?.replace('Kitchen request', '').trim() ?? 'Item'
+                            : r.notes?.replace('SPECIAL REQUEST:', '').replace(/\s*\([^)]*\)/, '').replace('[APPROVED]', '').trim() ?? 'Item';
+                          return (
+                            <span key={i} className="text-[10px] bg-background border border-border px-2 py-0.5 rounded-full">
+                              {name} ({r.quantity_used})
+                            </span>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  );
+                })}
+              </CardContent>
+            </Card>
+          );
+        })()}
 
         {/* Inventory */}
         <Card className="border-0 shadow-sm">
