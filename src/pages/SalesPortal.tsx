@@ -16,6 +16,7 @@ import { toast } from 'sonner';
 import { User, Phone, Loader2, Plus, Trash2, Search, Edit2, MapPin, Send, UtensilsCrossed, Truck, Calendar, UserPlus, KeyRound, Copy } from 'lucide-react';
 import { extractCoordinatesFromInput, fetchLocationFromAddress } from '@/lib/geolocation';
 import { generatePortalCredentials } from '@/lib/credentials';
+import { createInvoiceRecord } from '@/lib/invoice-service';
 
 type PlanType = '1-time' | '2-time' | '3-time' | 'custom';
 
@@ -401,27 +402,61 @@ export default function SalesPortal() {
       console.log('[SalesPortal] owner_id:', freshSalesPerson.owner_id, 'type:', typeof freshSalesPerson.owner_id);
 
       // Try with sales_person_id first
-      let { error } = await supabase.from('members').insert(insertData as any);
+      let result = await supabase.from('members').insert(insertData as any).select().single();
 
       // If FK error on sales_person_id, try without it
-      if (error && error.message.includes('sales_person_id')) {
+      if (result.error && result.error.message.includes('sales_person_id')) {
         console.log('[SalesPortal] FK error on sales_person_id, trying without it...');
         const insertWithoutSp = { ...insertData };
         delete (insertWithoutSp as any).sales_person_id;
-        
-        ({ error } = await supabase.from('members').insert(insertWithoutSp as any));
+        result = await supabase.from('members').insert(insertWithoutSp as any).select().single();
       }
 
-      if (error) {
-        console.error('[SalesPortal] Insert error:', error);
-        toast.error('Database error: ' + error.message);
-        throw error;
+      if (result.error) {
+        console.error('[SalesPortal] Insert error:', result.error);
+        toast.error('Database error: ' + result.error.message);
+        throw result.error;
+      }
+
+      const newMember = result.data;
+
+      // Create transaction + invoice for paid members (same as Admin Dashboard flow)
+      if (formData.isPaid && !formData.free_trial && newMember) {
+        // Record the payment transaction
+        await supabase.from('transactions').insert({
+          owner_id: freshSalesPerson.owner_id,
+          member_id: newMember.id,
+          amount: monthlyFee,
+          type: 'payment',
+          notes: `Initial payment on signup (via ${salesPerson.name})`,
+        } as any);
+
+        // Auto-create invoice record in DB
+        await createInvoiceRecord({
+          ownerId: freshSalesPerson.owner_id,
+          memberId: newMember.id,
+          memberName: formData.name.trim(),
+          memberPhone: formData.phone.trim(),
+          amount: monthlyFee,
+          source: 'member_signup',
+          notes: `Added by sales: ${salesPerson.name}`,
+        });
+      } else if (formData.free_trial && newMember) {
+        // Record trial start transaction
+        await supabase.from('transactions').insert({
+          owner_id: freshSalesPerson.owner_id,
+          member_id: newMember.id,
+          amount: monthlyFee,
+          type: 'payment',
+          notes: `Trial period started (via ${salesPerson.name})`,
+        } as any);
       }
 
       toast.success(`Customer added! Login: ${creds.username}`);
       setIsAddOpen(false);
       resetFormData();
       queryClient.invalidateQueries({ queryKey: ['members'] });
+      queryClient.invalidateQueries({ queryKey: ['invoices'] });
     } catch (err: any) {
       toast.error('Failed: ' + (err.message || 'Unknown error'));
     } finally {
@@ -576,7 +611,7 @@ export default function SalesPortal() {
 
   if (isCheckingSession) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-gray-50">
+      <div className="min-h-screen flex items-center justify-center bg-gradient-to-b from-primary/5 to-background">
         <Loader2 className="h-8 w-8 animate-spin text-primary" />
       </div>
     );
@@ -587,41 +622,46 @@ export default function SalesPortal() {
   }
 
   return (
-    <div className="min-h-screen bg-gray-50">
-      <header className="bg-white border-b shadow-sm sticky top-0 z-50">
+    <div className="min-h-screen bg-gradient-to-b from-primary/5 to-background">
+      <header className="bg-card/80 backdrop-blur-xl border-b sticky top-0 z-50">
         <div className="max-w-5xl mx-auto px-4 py-3 flex items-center justify-between">
-          <div>
-            <h1 className="text-lg font-bold">Sales Portal</h1>
-            <p className="text-xs text-muted-foreground">Logged in as {salesPerson.name}</p>
+          <div className="flex items-center gap-3">
+            <div className="h-9 w-9 bg-primary/10 rounded-full flex items-center justify-center">
+              <User className="h-4 w-4 text-primary" />
+            </div>
+            <div>
+              <h1 className="text-sm font-bold">{salesPerson.business_name || 'Sales Portal'}</h1>
+              <p className="text-xs text-muted-foreground">{salesPerson.name}</p>
+            </div>
           </div>
           <Button variant="outline" size="sm" onClick={handleLogout}>Logout</Button>
         </div>
       </header>
 
       <main className="max-w-5xl mx-auto px-4 py-4 space-y-4">
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-          <Card>
-            <CardContent className="p-4 text-center">
-              <p className="text-2xl font-bold">{myMembers.length}</p>
-              <p className="text-xs text-muted-foreground">Total</p>
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 sm:gap-3">
+          <Card className="border-0 shadow-sm">
+            <CardContent className="p-3 sm:p-4 text-center">
+              <p className="text-xl sm:text-2xl font-bold">{myMembers.length}</p>
+              <p className="text-[10px] sm:text-xs text-muted-foreground">Total</p>
             </CardContent>
           </Card>
-          <Card>
-            <CardContent className="p-4 text-center">
-              <p className="text-2xl font-bold text-green-600">{myMembers.filter((m) => m.status === 'active').length}</p>
-              <p className="text-xs text-muted-foreground">Active</p>
+          <Card className="border-0 shadow-sm">
+            <CardContent className="p-3 sm:p-4 text-center">
+              <p className="text-xl sm:text-2xl font-bold text-green-600">{myMembers.filter((m) => m.status === 'active').length}</p>
+              <p className="text-[10px] sm:text-xs text-muted-foreground">Active</p>
             </CardContent>
           </Card>
-          <Card>
-            <CardContent className="p-4 text-center">
-              <p className="text-2xl font-bold text-red-600">{myMembers.filter((m) => m.status === 'inactive').length}</p>
-              <p className="text-xs text-muted-foreground">Inactive</p>
+          <Card className="border-0 shadow-sm">
+            <CardContent className="p-3 sm:p-4 text-center">
+              <p className="text-xl sm:text-2xl font-bold text-red-600">{myMembers.filter((m) => m.status === 'inactive').length}</p>
+              <p className="text-[10px] sm:text-xs text-muted-foreground">Inactive</p>
             </CardContent>
           </Card>
-          <Card>
-            <CardContent className="p-4 text-center">
-              <p className="text-2xl font-bold">{myMembers.reduce((s, m) => s + (m.balance || 0), 0)}</p>
-              <p className="text-xs text-muted-foreground">Balance</p>
+          <Card className="border-0 shadow-sm">
+            <CardContent className="p-3 sm:p-4 text-center">
+              <p className="text-xl sm:text-2xl font-bold">{myMembers.reduce((s, m) => s + (m.balance || 0), 0)}</p>
+              <p className="text-[10px] sm:text-xs text-muted-foreground">Balance</p>
             </CardContent>
           </Card>
         </div>
@@ -696,7 +736,7 @@ export default function SalesPortal() {
                             <div className="flex items-center gap-1 mt-1">
                               <Badge
                                 variant="outline"
-                                className="text-[10px] h-5 px-1.5 border-blue-500 text-blue-500 cursor-pointer hover:bg-blue-500/10"
+                                className="text-[10px] h-5 px-1.5 border-primary text-primary cursor-pointer hover:bg-primary/10"
                                 title="Click to copy username"
                                 onClick={(e) => {
                                   e.stopPropagation();
@@ -786,7 +826,7 @@ export default function SalesPortal() {
                                   )}
                                   {day.dinner && (
                                     <div className="flex gap-1">
-                                      <Badge variant="outline" className="text-[10px] bg-purple-50">D</Badge>
+                                      <Badge variant="outline" className="text-[10px] bg-violet-500/10">D</Badge>
                                       <span>{day.dinner}</span>
                                     </div>
                                   )}

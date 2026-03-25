@@ -204,8 +204,8 @@ export default function CustomerPortal() {
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-white flex items-center justify-center">
-        <Loader2 className="h-8 w-8 animate-spin text-orange-500" />
+      <div className="min-h-screen bg-gradient-to-b from-primary/5 to-background flex items-center justify-center">
+        <Loader2 className="h-8 w-8 animate-spin text-primary" />
       </div>
     );
   }
@@ -213,50 +213,50 @@ export default function CustomerPortal() {
   if (!isAuthenticated) {
     if (isRegisterMode) {
       return (
-        <div className="min-h-screen bg-gradient-to-br from-orange-50 via-white to-green-50 flex items-center justify-center p-4">
+        <div className="min-h-screen bg-gradient-to-b from-primary/5 to-background flex items-center justify-center p-4">
           <Card className="w-full max-w-md shadow-xl border-0">
             <CardHeader className="text-center pb-2">
-              <div className="mx-auto w-16 h-16 bg-orange-100 rounded-full flex items-center justify-center mb-4">
-                <UserPlus className="h-8 w-8 text-orange-500" />
+              <div className="mx-auto w-16 h-16 bg-primary/10 rounded-full flex items-center justify-center mb-4">
+                <UserPlus className="h-8 w-8 text-primary" />
               </div>
-              <CardTitle className="text-2xl font-bold text-gray-900">Register</CardTitle>
-              <p className="text-gray-500 mt-2">Join {businessName || 'our service'}</p>
+              <CardTitle className="text-2xl font-bold text-foreground">Register</CardTitle>
+              <p className="text-muted-foreground mt-2">Join {businessName || 'our service'}</p>
             </CardHeader>
             <CardContent>
               <form onSubmit={handleRegister} className="space-y-4">
                 <div className="space-y-2">
-                  <Label htmlFor="registerName" className="text-gray-700">Full Name</Label>
+                  <Label htmlFor="registerName" className="text-foreground">Full Name</Label>
                   <Input
                     id="registerName"
                     type="text"
                     value={registerName}
                     onChange={(e) => setRegisterName(e.target.value)}
                     placeholder="John Doe"
-                    className="h-12 border-gray-200 focus:border-orange-400 focus:ring-orange-100"
+                    className="h-12 border-border focus:border-orange-400 focus:ring-orange-100"
                     required
                   />
                 </div>
                 <div className="space-y-2">
-                  <Label htmlFor="registerPhone" className="text-gray-700">Phone Number</Label>
+                  <Label htmlFor="registerPhone" className="text-foreground">Phone Number</Label>
                   <Input
                     id="registerPhone"
                     type="tel"
                     value={registerPhone}
                     onChange={(e) => setRegisterPhone(e.target.value)}
                     placeholder="05X XXX XXXX"
-                    className="h-12 border-gray-200 focus:border-orange-400 focus:ring-orange-100"
+                    className="h-12 border-border focus:border-orange-400 focus:ring-orange-100"
                     required
                   />
                 </div>
                 <div className="space-y-2">
-                  <Label htmlFor="registerAddress" className="text-gray-700">Address (Optional)</Label>
+                  <Label htmlFor="registerAddress" className="text-foreground">Address (Optional)</Label>
                   <Input
                     id="registerAddress"
                     type="text"
                     value={registerAddress}
                     onChange={(e) => setRegisterAddress(e.target.value)}
                     placeholder="Your delivery address"
-                    className="h-12 border-gray-200 focus:border-orange-400 focus:ring-orange-100"
+                    className="h-12 border-border focus:border-orange-400 focus:ring-orange-100"
                   />
                 </div>
                 <Button 
@@ -267,8 +267,8 @@ export default function CustomerPortal() {
                   {registerLoading ? <Loader2 className="h-5 w-5 animate-spin" /> : 'Register'}
                 </Button>
               </form>
-              <p className="text-center text-sm text-gray-400 mt-4">
-                Already registered? <button onClick={() => navigate(`/${slug || ownerId}/customer`)} className="text-orange-500 hover:underline">Login here</button>
+              <p className="text-center text-sm text-muted-foreground mt-4">
+                Already registered? <button onClick={() => navigate(`/${slug || ownerId}/customer`)} className="text-primary hover:underline">Login here</button>
               </p>
             </CardContent>
           </Card>
@@ -277,31 +277,31 @@ export default function CustomerPortal() {
     }
 
     return (
-      <div className="min-h-screen bg-gradient-to-br from-orange-50 via-white to-green-50 flex items-center justify-center p-4">
+      <div className="min-h-screen bg-gradient-to-b from-primary/5 to-background flex items-center justify-center p-4">
         <Card className="w-full max-w-md shadow-xl border-0">
           <CardHeader className="text-center pb-2">
-            <div className="mx-auto w-16 h-16 bg-orange-100 rounded-full flex items-center justify-center mb-4">
-              <Package className="h-8 w-8 text-orange-500" />
+            <div className="mx-auto w-16 h-16 bg-primary/10 rounded-full flex items-center justify-center mb-4">
+              <Package className="h-8 w-8 text-primary" />
             </div>
-            <CardTitle className="text-2xl font-bold text-gray-900">{businessName || 'MessFlow'}</CardTitle>
-            <p className="text-gray-500 mt-2">Customer Portal</p>
+            <CardTitle className="text-2xl font-bold text-foreground">{businessName || 'MessFlow'}</CardTitle>
+            <p className="text-muted-foreground mt-2">Customer Portal</p>
           </CardHeader>
           <CardContent>
             <form onSubmit={handleLogin} className="space-y-4">
               <div className="space-y-2">
-                <Label htmlFor="username" className="text-gray-700">Username</Label>
+                <Label htmlFor="username" className="text-foreground">Username</Label>
                 <Input
                   id="username"
                   type="text"
                   value={loginUsername}
                   onChange={(e) => setLoginUsername(e.target.value)}
                   placeholder="Your username"
-                  className="h-12 border-gray-200 focus:border-orange-400 focus:ring-orange-100"
+                  className="h-12 border-border focus:border-orange-400 focus:ring-orange-100"
                   autoComplete="username"
                 />
               </div>
               <div className="space-y-2">
-                <Label htmlFor="password" className="text-gray-700">Password</Label>
+                <Label htmlFor="password" className="text-foreground">Password</Label>
                 <div className="relative">
                   <Input
                     id="password"
@@ -309,32 +309,32 @@ export default function CustomerPortal() {
                     value={loginPassword}
                     onChange={(e) => setLoginPassword(e.target.value)}
                     placeholder="Your password"
-                    className="h-12 border-gray-200 focus:border-orange-400 focus:ring-orange-100 pr-10"
+                    className="h-12 border-border focus:border-orange-400 focus:ring-orange-100 pr-10"
                     autoComplete="current-password"
                   />
                   <button
                     type="button"
                     onClick={() => setShowPassword(!showPassword)}
-                    className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
+                    className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-muted-foreground"
                   >
                     {showPassword ? '🙈' : '👁'}
                   </button>
                 </div>
               </div>
               <div className="relative flex items-center gap-3 my-2">
-                <div className="flex-1 h-px bg-gray-200" />
-                <span className="text-xs text-gray-400">or login with phone</span>
-                <div className="flex-1 h-px bg-gray-200" />
+                <div className="flex-1 h-px bg-muted" />
+                <span className="text-xs text-muted-foreground">or login with phone</span>
+                <div className="flex-1 h-px bg-muted" />
               </div>
               <div className="space-y-2">
-                <Label htmlFor="phone" className="text-gray-700">Phone Number</Label>
+                <Label htmlFor="phone" className="text-foreground">Phone Number</Label>
                 <Input
                   id="phone"
                   type="tel"
                   value={phone}
                   onChange={(e) => setPhone(e.target.value)}
                   placeholder="05X XXX XXXX"
-                  className="h-12 border-gray-200 focus:border-orange-400 focus:ring-orange-100"
+                  className="h-12 border-border focus:border-orange-400 focus:ring-orange-100"
                 />
               </div>
               <Button 
@@ -346,11 +346,11 @@ export default function CustomerPortal() {
               </Button>
             </form>
             <div className="flex justify-between mt-4">
-              <p className="text-center text-sm text-gray-400">
+              <p className="text-center text-sm text-muted-foreground">
                 Enter the phone number you registered with
               </p>
               {slug && (
-                <button onClick={() => navigate(`/${slug}/register`)} className="text-sm text-orange-500 hover:underline">
+                <button onClick={() => navigate(`/${slug}/register`)} className="text-sm text-primary hover:underline">
                   Register
                 </button>
               )}
@@ -362,20 +362,20 @@ export default function CustomerPortal() {
   }
 
   return (
-    <div className="min-h-screen bg-gray-50">
+    <div className="min-h-screen bg-gradient-to-b from-primary/5 to-background">
       {/* Header */}
-      <header className="bg-white shadow-sm border-b border-gray-100 sticky top-0 z-50">
-        <div className="max-w-3xl mx-auto px-4 py-4 flex items-center justify-between">
+      <header className="bg-card/80 backdrop-blur-xl border-b sticky top-0 z-50">
+        <div className="max-w-3xl mx-auto px-4 py-3 flex items-center justify-between">
           <div className="flex items-center gap-3">
-            <div className="w-10 h-10 bg-orange-100 rounded-full flex items-center justify-center">
-              <Package className="h-5 w-5 text-orange-500" />
+            <div className="w-10 h-10 bg-primary/10 rounded-full flex items-center justify-center">
+              <Package className="h-5 w-5 text-primary" />
             </div>
             <div>
-              <h1 className="font-bold text-gray-900">{businessName}</h1>
-              <p className="text-xs text-gray-500">Customer Portal</p>
+              <h1 className="font-bold text-foreground">{businessName}</h1>
+              <p className="text-xs text-muted-foreground">Customer Portal</p>
             </div>
           </div>
-          <Button variant="ghost" size="sm" onClick={handleLogout} className="text-gray-500">
+          <Button variant="ghost" size="sm" onClick={handleLogout} className="text-muted-foreground">
             <LogOut className="h-4 w-4 mr-1" />
             Logout
           </Button>
@@ -391,13 +391,13 @@ export default function CustomerPortal() {
                 {customer?.name?.charAt(0).toUpperCase()}
               </div>
               <div className="flex-1">
-                <h2 className="text-xl font-bold text-gray-900">{customer?.name}</h2>
-                <div className="flex items-center gap-2 text-gray-500 text-sm mt-1">
+                <h2 className="text-xl font-bold text-foreground">{customer?.name}</h2>
+                <div className="flex items-center gap-2 text-muted-foreground text-sm mt-1">
                   <Phone className="h-4 w-4" />
                   {customer?.phone}
                 </div>
                 {customer?.address && (
-                  <div className="flex items-center gap-2 text-gray-500 text-sm mt-1">
+                  <div className="flex items-center gap-2 text-muted-foreground text-sm mt-1">
                     <MapPin className="h-4 w-4" />
                     {customer.address}
                   </div>
@@ -407,7 +407,7 @@ export default function CustomerPortal() {
                 className={`px-3 py-1 rounded-full text-sm font-medium ${
                   customer?.status === 'active' 
                     ? 'bg-green-100 text-green-700' 
-                    : 'bg-gray-100 text-gray-700'
+                    : 'bg-muted text-foreground'
                 }`}
               >
                 {customer?.status === 'active' ? 'Active' : 'Inactive'}
@@ -422,11 +422,11 @@ export default function CustomerPortal() {
             <CardContent className="pt-6">
               <div className="flex items-center gap-3">
                 <div className="w-12 h-12 bg-blue-100 rounded-xl flex items-center justify-center">
-                  <CreditCard className="h-6 w-6 text-blue-600" />
+                  <CreditCard className="h-6 w-6 text-primary" />
                 </div>
                 <div>
-                  <p className="text-sm text-gray-500">Monthly Fee</p>
-                  <p className="text-2xl font-bold text-gray-900">AED {customer?.monthly_fee}</p>
+                  <p className="text-sm text-muted-foreground">Monthly Fee</p>
+                  <p className="text-2xl font-bold text-foreground">AED {customer?.monthly_fee}</p>
                 </div>
               </div>
             </CardContent>
@@ -440,7 +440,7 @@ export default function CustomerPortal() {
                   <Clock className={`h-6 w-6 ${(customer?.balance || 0) > 0 ? 'text-red-600' : 'text-green-600'}`} />
                 </div>
                 <div>
-                  <p className="text-sm text-gray-500">Balance</p>
+                  <p className="text-sm text-muted-foreground">Balance</p>
                   <p className={`text-2xl font-bold ${(customer?.balance || 0) > 0 ? 'text-red-600' : 'text-green-600'}`}>
                     AED {customer?.balance || 0}
                   </p>
@@ -452,16 +452,16 @@ export default function CustomerPortal() {
 
         {/* Tabs */}
         <Tabs value={activeTab} onValueChange={(v) => setActiveTab as any} className="space-y-4">
-          <TabsList className="w-full bg-white shadow-sm rounded-xl p-1 h-auto">
+          <TabsList className="w-full bg-card shadow-sm rounded-xl p-1 h-auto">
             <TabsTrigger 
               value="overview" 
-              className="flex-1 rounded-lg data-[state=active]:bg-orange-100 data-[state=active]:text-orange-700"
+              className="flex-1 rounded-lg data-[state=active]:bg-primary/10 data-[state=active]:text-orange-700"
             >
               Overview
             </TabsTrigger>
             <TabsTrigger 
               value="invoices" 
-              className="flex-1 rounded-lg data-[state=active]:bg-orange-100 data-[state=active]:text-orange-700"
+              className="flex-1 rounded-lg data-[state=active]:bg-primary/10 data-[state=active]:text-orange-700"
             >
               Invoices
             </TabsTrigger>
@@ -470,22 +470,22 @@ export default function CustomerPortal() {
           <TabsContent value="overview" className="space-y-4">
             <Card className="border-0 shadow-md">
               <CardHeader className="pb-3">
-                <CardTitle className="text-lg text-gray-700">Plan Details</CardTitle>
+                <CardTitle className="text-lg text-foreground">Plan Details</CardTitle>
               </CardHeader>
               <CardContent className="space-y-4">
-                <div className="flex items-center justify-between py-2 border-b border-gray-100">
-                  <span className="text-gray-500">Meal Plan</span>
-                  <span className="font-medium text-gray-900">{customer?.plan_type} times</span>
+                <div className="flex items-center justify-between py-2 border-b border-border">
+                  <span className="text-muted-foreground">Meal Plan</span>
+                  <span className="font-medium text-foreground">{customer?.plan_type} times</span>
                 </div>
-                <div className="flex items-center justify-between py-2 border-b border-gray-100">
-                  <span className="text-gray-500">Join Date</span>
-                  <span className="font-medium text-gray-900">
+                <div className="flex items-center justify-between py-2 border-b border-border">
+                  <span className="text-muted-foreground">Join Date</span>
+                  <span className="font-medium text-foreground">
                     {customer?.joining_date ? formatDate(customer.joining_date) : '-'}
                   </span>
                 </div>
-                <div className="flex items-center justify-between py-2 border-b border-gray-100">
-                  <span className="text-gray-500">Expiry Date</span>
-                  <span className="font-medium text-gray-900">
+                <div className="flex items-center justify-between py-2 border-b border-border">
+                  <span className="text-muted-foreground">Expiry Date</span>
+                  <span className="font-medium text-foreground">
                     {customer?.plan_expiry_date ? formatDate(customer.plan_expiry_date) : '-'}
                   </span>
                 </div>
@@ -494,7 +494,7 @@ export default function CustomerPortal() {
                     href={customer.map_link}
                     target="_blank"
                     rel="noopener noreferrer"
-                    className="flex items-center justify-center gap-2 w-full py-3 mt-4 bg-orange-50 hover:bg-orange-100 text-orange-700 rounded-lg transition-colors"
+                    className="flex items-center justify-center gap-2 w-full py-3 mt-4 bg-orange-50 hover:bg-primary/10 text-orange-700 rounded-lg transition-colors"
                   >
                     <MapPin className="h-5 w-5" />
                     View Delivery Location
@@ -507,10 +507,10 @@ export default function CustomerPortal() {
           <TabsContent value="invoices" className="space-y-4">
             <Card className="border-0 shadow-md">
               <CardHeader className="pb-3">
-                <CardTitle className="text-lg text-gray-700">Recent Invoices</CardTitle>
+                <CardTitle className="text-lg text-foreground">Recent Invoices</CardTitle>
               </CardHeader>
               <CardContent>
-                <div className="text-center py-8 text-gray-400">
+                <div className="text-center py-8 text-muted-foreground">
                   <FileText className="h-12 w-12 mx-auto mb-3 opacity-50" />
                   <p>No invoices yet</p>
                 </div>
@@ -523,14 +523,14 @@ export default function CustomerPortal() {
         <div className="grid grid-cols-2 gap-3">
           <Button 
             variant="outline" 
-            className="h-12 border-gray-200 hover:bg-orange-50 hover:border-orange-200 hover:text-orange-700"
+            className="h-12 border-border hover:bg-orange-50 hover:border-orange-200 hover:text-orange-700"
           >
             <Pause className="h-4 w-4 mr-2" />
             Pause Meals
           </Button>
           <Button 
             variant="outline" 
-            className="h-12 border-gray-200 hover:bg-green-50 hover:border-green-200 hover:text-green-700"
+            className="h-12 border-border hover:bg-green-50 hover:border-green-200 hover:text-green-700"
           >
             <Play className="h-4 w-4 mr-2" />
             Resume Meals

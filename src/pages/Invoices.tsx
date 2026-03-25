@@ -62,6 +62,7 @@ export default function Invoices() {
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState<string>('all');
+  const [memberFilter, setMemberFilter] = useState<string>('all');
   
   // Dialog states
   const [isCreateOpen, setIsCreateOpen] = useState(false);
@@ -83,22 +84,35 @@ export default function Invoices() {
   const fetchInvoices = async () => {
     if (!user?.id) return [];
     try {
-      const { data, error } = await supabase
+      // Try join query first
+      let result = await supabase
         .from('invoices')
         .select('*, members:member_id (id, name, phone)')
         .eq('owner_id', user.id)
         .order('created_at', { ascending: false });
 
-      if (error) {
-        console.error('Invoice fetch error:', error);
-        // Table might not exist yet
-        if (error.code === '42P01' || error.message?.includes('relation') || error.code === 'PGRST204') {
-          return [];
+      // Fallback: if join fails (missing FK or table issue), query without join
+      if (result.error) {
+        console.warn('Invoice join query failed, using fallback:', result.error.message);
+        result = await supabase
+          .from('invoices')
+          .select('*')
+          .eq('owner_id', user.id)
+          .order('created_at', { ascending: false }) as any;
+
+        if (result.error) {
+          // Table might not exist yet
+          if (result.error.code === '42P01' || result.error.message?.includes('relation')) return [];
+          throw result.error;
         }
-        throw error;
+        return (result.data || []).map((inv: any) => ({ ...inv, member: null }));
       }
+
       // Map 'members' back to 'member' for backward compatibility
-      return (data || []).map((inv: any) => ({ ...inv, member: inv.members }));
+      return (result.data || []).map((inv: any) => ({
+        ...inv,
+        member: Array.isArray(inv.members) ? inv.members[0] || null : inv.members || null,
+      }));
     } catch (err) {
       console.error('Invoice fetch failed:', err);
       return [];
@@ -326,13 +340,66 @@ export default function Invoices() {
     return getSubtotal() + getTaxAmount();
   };
 
+  const handlePrintInvoice = (inv: Invoice, items: InvoiceItem[]) => {
+    const w = window.open('', '_blank');
+    if (!w) { toast.error('Popup blocked — allow popups to print'); return; }
+    const biz = profile?.business_name || 'Business';
+    const addr = (profile as any)?.company_address || '';
+    const trn = (profile as any)?.tax_trn || '';
+    const cur = getCurrency();
+    const fmt = (n: number) => new Intl.NumberFormat('en-US', { style: 'currency', currency: cur }).format(n);
+    const itemsHtml = items.map((it, i) => `<tr><td>${i + 1}</td><td>${it.description}</td><td class="r">${it.quantity}</td><td class="r">${fmt(it.unit_price)}</td><td class="r">${fmt(it.total_price)}</td></tr>`).join('');
+    w.document.write(`<!DOCTYPE html><html><head><title>${inv.invoice_number}</title><style>
+      *{margin:0;padding:0;box-sizing:border-box}body{font-family:-apple-system,system-ui,sans-serif;padding:40px;font-size:13px;color:#1a1a1a}
+      .hdr{display:flex;justify-content:space-between;margin-bottom:32px;padding-bottom:20px;border-bottom:2px solid #111}
+      .hdr h1{font-size:22px;letter-spacing:-0.5px}.hdr .inv-no{font-size:11px;color:#666;margin-top:4px}
+      .hdr .biz{text-align:right;font-size:12px;color:#555}.meta{display:grid;grid-template-columns:1fr 1fr;gap:20px;margin-bottom:24px}
+      .meta-box{padding:12px;background:#f8f8f8;border-radius:6px}.meta-box label{display:block;font-size:10px;text-transform:uppercase;color:#888;margin-bottom:4px;letter-spacing:0.5px}
+      .meta-box p{font-weight:600;font-size:13px}
+      table{width:100%;border-collapse:collapse;margin:20px 0}th{background:#f0f0f0;text-align:left;padding:8px 12px;font-size:11px;text-transform:uppercase;letter-spacing:0.5px;color:#555}
+      td{padding:8px 12px;border-bottom:1px solid #eee}.r{text-align:right}
+      .totals{margin-left:auto;width:260px}.totals .row{display:flex;justify-content:space-between;padding:6px 0;font-size:13px}
+      .totals .total{font-size:16px;font-weight:700;border-top:2px solid #111;padding-top:8px;margin-top:4px}
+      .notes{margin-top:20px;padding:12px;background:#fafafa;border-radius:6px;font-size:12px;color:#666}
+      .badge{display:inline-block;padding:2px 8px;border-radius:4px;font-size:10px;font-weight:600;text-transform:uppercase}
+      .badge-paid{background:#dcfce7;color:#166534}.badge-draft{background:#f3f4f6;color:#4b5563}.badge-sent{background:#dbeafe;color:#1e40af}
+      .footer{margin-top:40px;padding-top:16px;border-top:1px solid #eee;font-size:10px;color:#999;text-align:center}
+      .no-print{text-align:center;margin-bottom:20px}@media print{.no-print{display:none}body{padding:20px}}
+    </style></head><body>
+      <div class="no-print"><button onclick="window.print()" style="padding:10px 24px;font-size:14px;cursor:pointer;border:1px solid #ddd;border-radius:6px;background:#fff">Print / Save as PDF</button></div>
+      <div class="hdr"><div><h1>${biz}</h1>${addr ? `<p style="font-size:12px;color:#555;margin-top:4px">${addr}</p>` : ''}${trn ? `<p style="font-size:11px;color:#888;margin-top:2px">TRN: ${trn}</p>` : ''}</div>
+        <div class="biz"><p style="font-size:18px;font-weight:700">${inv.invoice_number}</p><p class="inv-no">Date: ${inv.created_at?.split('T')[0] || 'N/A'}</p>
+          <span class="badge badge-${inv.status}">${inv.status}</span></div></div>
+      <div class="meta">
+        <div class="meta-box"><label>Bill To</label><p>${inv.member?.name || 'Customer'}</p><p style="font-weight:400;font-size:12px;color:#666">${inv.member?.phone || inv.customer_phone || ''}</p></div>
+        <div class="meta-box"><label>Billing Period</label><p>${inv.billing_period_start || 'N/A'} — ${inv.billing_period_end || 'N/A'}</p>
+          ${inv.due_date ? `<p style="font-weight:400;font-size:12px;color:#666;margin-top:4px">Due: ${inv.due_date}</p>` : ''}
+          ${inv.paid_date ? `<p style="font-weight:400;font-size:12px;color:#16a34a;margin-top:4px">Paid: ${inv.paid_date}</p>` : ''}</div>
+      </div>
+      <table><thead><tr><th>#</th><th>Description</th><th class="r">Qty</th><th class="r">Unit Price</th><th class="r">Total</th></tr></thead>
+        <tbody>${itemsHtml || '<tr><td colspan="5" style="text-align:center;color:#999;padding:20px">No line items</td></tr>'}</tbody></table>
+      <div class="totals"><div class="row"><span>Subtotal</span><span>${fmt(inv.subtotal)}</span></div>
+        <div class="row"><span>Tax (${inv.tax_rate}%)</span><span>${fmt(inv.tax_amount)}</span></div>
+        <div class="row total"><span>Total</span><span>${fmt(inv.total_amount)}</span></div></div>
+      ${inv.notes ? `<div class="notes"><strong>Notes:</strong> ${inv.notes}</div>` : ''}
+      <div class="footer">Generated by ${biz} · MessFlow</div>
+    </body></html>`);
+    w.document.close();
+  };
+
   const filteredInvoices = invoices.filter(inv => {
     const matchesSearch = searchQuery === '' || 
       inv.invoice_number.toLowerCase().includes(searchQuery.toLowerCase()) ||
       inv.member?.name?.toLowerCase().includes(searchQuery.toLowerCase());
     const matchesStatus = statusFilter === 'all' || inv.status === statusFilter;
-    return matchesSearch && matchesStatus;
+    const matchesMember = memberFilter === 'all' || inv.member_id === memberFilter;
+    return matchesSearch && matchesStatus && matchesMember;
   });
+
+  // Unique members who have invoices (for the member filter dropdown)
+  const invoicedMembers = Array.from(
+    new Map(invoices.filter(i => i.member).map(i => [i.member_id, i.member!])).values()
+  );
 
   const getStatusBadge = (status: string) => {
     switch (status) {
@@ -367,6 +434,7 @@ export default function Invoices() {
   const totalDraft = invoices.filter(i => i.status === 'draft').reduce((sum, i) => sum + i.total_amount, 0);
   const totalPaid = invoices.filter(i => i.status === 'paid').reduce((sum, i) => sum + i.total_amount, 0);
   const totalPending = invoices.filter(i => i.status === 'sent' || i.status === 'overdue').reduce((sum, i) => sum + i.total_amount, 0);
+  const autoGenCount = invoices.filter(i => i.source && i.source !== 'manual').length;
 
   if (isLoading) {
     return (
@@ -520,9 +588,18 @@ export default function Invoices() {
         </div>
 
         {/* Summary Cards */}
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
           <Card>
-            <CardHeader>
+            <CardHeader className="pb-2">
+              <CardTitle className="text-sm font-medium text-muted-foreground">Total Invoices</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <p className="text-2xl font-bold">{invoices.length}</p>
+              <p className="text-xs text-muted-foreground">{autoGenCount} auto-generated</p>
+            </CardContent>
+          </Card>
+          <Card>
+            <CardHeader className="pb-2">
               <CardTitle className="text-sm font-medium text-muted-foreground">Draft</CardTitle>
             </CardHeader>
             <CardContent>
@@ -530,19 +607,19 @@ export default function Invoices() {
             </CardContent>
           </Card>
           <Card>
-            <CardHeader>
+            <CardHeader className="pb-2">
               <CardTitle className="text-sm font-medium text-muted-foreground">Pending</CardTitle>
             </CardHeader>
             <CardContent>
-              <p className="text-2xl font-bold">{formatCurrency(totalPending)}</p>
+              <p className="text-2xl font-bold text-amber-600">{formatCurrency(totalPending)}</p>
             </CardContent>
           </Card>
           <Card>
-            <CardHeader>
+            <CardHeader className="pb-2">
               <CardTitle className="text-sm font-medium text-muted-foreground">Paid</CardTitle>
             </CardHeader>
             <CardContent>
-              <p className="text-2xl font-bold">{formatCurrency(totalPaid)}</p>
+              <p className="text-2xl font-bold text-green-600">{formatCurrency(totalPaid)}</p>
             </CardContent>
           </Card>
         </div>
@@ -562,6 +639,17 @@ export default function Invoices() {
                   />
                 </div>
               </div>
+              <Select value={memberFilter} onValueChange={setMemberFilter}>
+                <SelectTrigger className="w-44">
+                  <SelectValue placeholder="Filter by member" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All Members</SelectItem>
+                  {invoicedMembers.map((m) => (
+                    <SelectItem key={m.id} value={m.id}>{m.name}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
               <Select value={statusFilter} onValueChange={setStatusFilter}>
                 <SelectTrigger className="w-40">
                   <SelectValue placeholder="Filter by status" />
@@ -603,7 +691,14 @@ export default function Invoices() {
                         <div className="flex items-center gap-3">
                           <FileText className="h-5 w-5 text-muted-foreground" />
                           <div>
-                            <p className="font-medium">{invoice.invoice_number}</p>
+                            <div className="flex items-center gap-2">
+                              <p className="font-medium">{invoice.invoice_number}</p>
+                              {invoice.source && invoice.source !== 'manual' && (
+                                <Badge variant="outline" className="text-[10px] h-4 px-1.5 bg-blue-50 text-blue-700 border-blue-200">
+                                  {getSourceLabel(invoice.source)}
+                                </Badge>
+                              )}
+                            </div>
                             <p className="text-sm text-muted-foreground">
                               {invoice.member?.name || 'No customer'}
                             </p>
@@ -688,9 +783,16 @@ export default function Invoices() {
                   </div>
                   <div>
                     <p className="text-sm text-muted-foreground">Status</p>
-                    <Badge {...getStatusBadge(selectedInvoice.status)}>
-                      {selectedInvoice.status}
-                    </Badge>
+                    <div className="flex items-center gap-2">
+                      <Badge {...getStatusBadge(selectedInvoice.status)}>
+                        {selectedInvoice.status}
+                      </Badge>
+                      {selectedInvoice.source && selectedInvoice.source !== 'manual' && (
+                        <Badge variant="outline" className="text-[10px] bg-blue-50 text-blue-700 border-blue-200">
+                          {getSourceLabel(selectedInvoice.source)}
+                        </Badge>
+                      )}
+                    </div>
                   </div>
                   <div>
                     <p className="text-sm text-muted-foreground">Billing Period</p>
@@ -706,6 +808,20 @@ export default function Invoices() {
                       {selectedInvoice.due_date ? formatDate(new Date(selectedInvoice.due_date)) : 'N/A'}
                     </p>
                   </div>
+                  <div>
+                    <p className="text-sm text-muted-foreground">Created</p>
+                    <p className="font-medium">
+                      {formatDate(new Date(selectedInvoice.created_at))}
+                    </p>
+                  </div>
+                  {selectedInvoice.paid_date && (
+                    <div>
+                      <p className="text-sm text-muted-foreground">Paid Date</p>
+                      <p className="font-medium text-green-600">
+                        {formatDate(new Date(selectedInvoice.paid_date))}
+                      </p>
+                    </div>
+                  )}
                 </div>
 
                 <div>
@@ -769,9 +885,9 @@ export default function Invoices() {
                       Mark as Paid
                     </Button>
                   )}
-                  <Button variant="outline" onClick={() => window.print()}>
+                  <Button variant="outline" onClick={() => handlePrintInvoice(selectedInvoice, invoiceItems)}>
                     <Download className="h-4 w-4 mr-2" />
-                    Download
+                    Print Invoice
                   </Button>
                 </div>
               </div>

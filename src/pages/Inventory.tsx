@@ -32,9 +32,15 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { useInventory } from '@/hooks/useInventory';
+import { useAuth } from '@/lib/auth';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { InventoryBulkAddModal } from '@/components/InventoryBulkAddModal';
 import { DailyConsumptionModal } from '@/components/DailyConsumptionModal';
-import { Plus, Minus, Trash2, Loader2, Package, Pencil, Upload, ArrowDown } from 'lucide-react';
+import { supabase } from '@/integrations/supabase/client';
+import { Badge } from '@/components/ui/badge';
+import { format } from 'date-fns';
+import { Plus, Minus, Trash2, Loader2, Package, Pencil, Upload, ArrowDown, ChefHat, Clock, CheckCircle } from 'lucide-react';
+import { toast } from 'sonner';
 
 const UNITS = ['kg', 'pcs', 'liters', 'grams', 'boxes', 'packets'];
 
@@ -377,7 +383,94 @@ export default function Inventory() {
 
         {/* Daily Consumption Modal */}
         <DailyConsumptionModal open={isConsumptionOpen} onOpenChange={setIsConsumptionOpen} />
+
+        {/* Kitchen Requests Section */}
+        <KitchenRequests />
       </div>
     </AppLayout>
+  );
+}
+
+// ═══ KITCHEN REQUESTS COMPONENT ═══
+function KitchenRequests() {
+  const { user } = useAuth();
+  const queryClient = useQueryClient();
+  const { inventory } = useInventory();
+
+  const { data: requests = [], isLoading } = useQuery({
+    queryKey: ['kitchen-requests', user?.id],
+    queryFn: async () => {
+      if (!user) return [];
+      const { data, error } = await supabase
+        .from('inventory_consumption')
+        .select('*, inventory:inventory_id(item_name, unit)')
+        .eq('owner_id', user.id)
+        .order('created_at', { ascending: false })
+        .limit(50);
+      if (error) {
+        // Fallback without join
+        const fallback = await supabase
+          .from('inventory_consumption')
+          .select('*')
+          .eq('owner_id', user.id)
+          .order('created_at', { ascending: false })
+          .limit(50);
+        return (fallback.data || []).map((r: any) => ({ ...r, inventory: null }));
+      }
+      return (data || []).map((r: any) => ({
+        ...r,
+        inventory: Array.isArray(r.inventory) ? r.inventory[0] : r.inventory,
+      }));
+    },
+    enabled: !!user,
+    staleTime: 15000,
+  });
+
+  const kitchenRequests = requests.filter((r: any) => r.notes?.includes('Kitchen request') || r.notes?.includes('SPECIAL REQUEST'));
+
+  if (kitchenRequests.length === 0) return null;
+
+  return (
+    <Card>
+      <CardContent className="p-4">
+        <div className="flex items-center justify-between mb-3">
+          <h3 className="text-sm font-semibold flex items-center gap-2">
+            <ChefHat className="h-4 w-4 text-primary" />
+            Kitchen Requests
+            <Badge variant="secondary" className="text-[10px]">{kitchenRequests.length}</Badge>
+          </h3>
+        </div>
+        <div className="space-y-2">
+          {kitchenRequests.map((req: any) => {
+            const isSpecial = req.notes?.includes('SPECIAL REQUEST');
+            const itemName = req.inventory?.item_name || (isSpecial ? req.notes?.replace('SPECIAL REQUEST: ', '') : 'Unknown item');
+            return (
+              <div key={req.id} className="flex items-center justify-between py-2 border-b border-border last:border-0">
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm font-medium truncate">{itemName}</p>
+                  <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                    <Clock className="h-3 w-3" />
+                    {req.date || format(new Date(req.created_at), 'dd MMM')}
+                    {req.quantity_used > 0 && <span>· Qty: {req.quantity_used}</span>}
+                    {isSpecial && <Badge variant="outline" className="text-[9px] h-4">Special</Badge>}
+                  </div>
+                </div>
+                <Button
+                  size="sm" variant="outline" className="text-xs h-7"
+                  onClick={async () => {
+                    // Mark as fulfilled by deleting or updating
+                    await supabase.from('inventory_consumption').delete().eq('id', req.id);
+                    queryClient.invalidateQueries({ queryKey: ['kitchen-requests'] });
+                    toast.success('Request fulfilled');
+                  }}
+                >
+                  <CheckCircle className="h-3 w-3 mr-1" /> Done
+                </Button>
+              </div>
+            );
+          })}
+        </div>
+      </CardContent>
+    </Card>
   );
 }

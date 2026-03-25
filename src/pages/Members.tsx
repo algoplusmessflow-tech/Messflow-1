@@ -321,18 +321,28 @@ export default function Members() {
       if (formData.isPaid && !formData.free_trial) {
         // Auto-create invoice record in DB
         if (user) {
-          await createInvoiceRecord({
-            ownerId: user.id,
-            memberId: newMember.id,
-            memberName: formData.name.trim(),
-            memberPhone: formData.phone.trim(),
-            amount: monthlyFee,
-            taxRate: profile?.tax_rate || 5,
-            taxName: profile?.tax_name || 'VAT',
-            businessName: profile?.business_name,
-            source: 'member_signup',
-          });
-          queryClient.invalidateQueries({ queryKey: ['invoices'] });
+          try {
+            const inv = await createInvoiceRecord({
+              ownerId: user.id,
+              memberId: newMember.id,
+              memberName: formData.name.trim(),
+              memberPhone: formData.phone.trim(),
+              amount: monthlyFee,
+              taxRate: profile?.tax_rate || 5,
+              taxName: profile?.tax_name || 'VAT',
+              businessName: profile?.business_name,
+              source: 'member_signup',
+            });
+            if (inv) {
+              console.log('[Members] Invoice created:', inv.invoice_number);
+            } else {
+              console.warn('[Members] Invoice creation returned null');
+            }
+            queryClient.invalidateQueries({ queryKey: ['invoices'] });
+          } catch (invErr) {
+            console.error('[Members] Invoice creation failed:', invErr);
+            // Don't block member creation — invoice failure is non-critical
+          }
         }
 
         setLastPaymentInfo({
@@ -390,18 +400,23 @@ export default function Members() {
 
     // Auto-create invoice record in DB for this payment
     if (user) {
-      await createInvoiceRecord({
-        ownerId: user.id,
-        memberId: selectedMember.id,
-        memberName: selectedMember.name,
-        memberPhone: selectedMember.phone,
-        amount,
-        taxRate: profile?.tax_rate || 5,
-        taxName: profile?.tax_name || 'VAT',
-        businessName: profile?.business_name,
-        source: 'payment',
-      });
-      queryClient.invalidateQueries({ queryKey: ['invoices'] });
+      try {
+        const inv = await createInvoiceRecord({
+          ownerId: user.id,
+          memberId: selectedMember.id,
+          memberName: selectedMember.name,
+          memberPhone: selectedMember.phone,
+          amount,
+          taxRate: profile?.tax_rate || 5,
+          taxName: profile?.tax_name || 'VAT',
+          businessName: profile?.business_name,
+          source: 'payment',
+        });
+        if (inv) console.log('[Members] Payment invoice created:', inv.invoice_number);
+        queryClient.invalidateQueries({ queryKey: ['invoices'] });
+      } catch (invErr) {
+        console.error('[Members] Payment invoice failed:', invErr);
+      }
     }
 
     setLastPaymentInfo({

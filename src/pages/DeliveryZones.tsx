@@ -542,11 +542,11 @@ export default function DeliveryZones() {
         {/* Header */}
         <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
           <div>
-            <h1 className="text-2xl font-bold flex items-center gap-2">
-              <MapPin className="h-6 w-6 text-primary" />
+            <h1 className="text-xl sm:text-2xl font-bold flex items-center gap-2">
+              <MapPin className="h-5 w-5 sm:h-6 sm:w-6 text-primary" />
               Delivery Zones
             </h1>
-            <p className="text-muted-foreground">
+            <p className="text-sm text-muted-foreground">
               {zones.length} zones · {totalAssigned} members assigned
             </p>
           </div>
@@ -590,18 +590,18 @@ export default function DeliveryZones() {
           ) : (
             filteredZones.map((zone) => (
               <Card key={zone.id} className="hover:shadow-md transition-shadow">
-                <CardContent className="p-4">
-                  <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
-                    <div className="flex items-start gap-3 flex-1 min-w-0">
-                      <div className="h-10 w-10 rounded-full bg-primary/10 flex items-center justify-center flex-shrink-0 mt-0.5">
-                        <MapPin className="h-5 w-5 text-primary" />
+                <CardContent className="p-3 sm:p-4">
+                  <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2 sm:gap-3">
+                    <div className="flex items-start gap-2.5 flex-1 min-w-0 overflow-hidden">
+                      <div className="h-9 w-9 sm:h-10 sm:w-10 rounded-full bg-primary/10 flex items-center justify-center flex-shrink-0">
+                        <MapPin className="h-4 w-4 sm:h-5 sm:w-5 text-primary" />
                       </div>
-                      <div className="min-w-0 flex-1">
-                        <h3 className="font-medium truncate">{zone.name}</h3>
+                      <div className="min-w-0 flex-1 overflow-hidden">
+                        <h3 className="font-medium text-sm sm:text-base truncate">{zone.name}</h3>
                         {zone.description && (
-                          <p className="text-sm text-muted-foreground truncate">{zone.description}</p>
+                          <p className="text-xs sm:text-sm text-muted-foreground truncate">{zone.description}</p>
                         )}
-                        <div className="flex items-center gap-3 mt-1.5 flex-wrap">
+                        <div className="flex items-center gap-1.5 sm:gap-3 mt-1.5 flex-wrap">
                           {zone.radius_km && (
                             <Badge variant="outline" className="text-xs flex items-center gap-1">
                               <Radius className="h-3 w-3" />
@@ -624,26 +624,25 @@ export default function DeliveryZones() {
                         </div>
                       </div>
                     </div>
-                    <div className="flex items-center gap-2 flex-shrink-0">
+                    <div className="flex flex-wrap items-center gap-1.5 flex-shrink-0">
                       <Button
                         size="sm" variant={zone.driver_id ? "default" : "outline"}
-                        className="text-xs"
+                        className="text-xs h-7"
                         onClick={() => { setAssignDriverId(zone.id); setIsAssignDriverOpen(true); }}
-                        title={zone.driver_id ? "Change driver" : "Assign driver"}
                       >
                         <Truck className="h-3 w-3 mr-1" />
-                        {zone.driver ? zone.driver.name : "Assign Driver"}
+                        <span className="hidden sm:inline">{zone.driver ? zone.driver.name : "Assign"}</span>
+                        <span className="sm:hidden">{zone.driver ? zone.driver.name?.split(' ')[0] : "Assign"}</span>
                       </Button>
                       {zone.center_lat && zone.radius_km && (
                         <Button
                           size="sm" variant="outline"
-                          className="text-xs"
+                          className="text-xs h-7"
                           onClick={() => handleAutoAssign(zone)}
                           disabled={isAutoAssigning}
-                          title="Auto-assign members within radius"
                         >
-                          {isAutoAssigning ? <Loader2 className="h-3 w-3 animate-spin mr-1" /> : <UserCheck className="h-3 w-3 mr-1" />}
-                          Auto-assign
+                          {isAutoAssigning ? <Loader2 className="h-3 w-3 animate-spin" /> : <UserCheck className="h-3 w-3" />}
+                          <span className="hidden sm:inline ml-1">Auto-assign</span>
                         </Button>
                       )}
                       <Button size="icon" variant="ghost" className="h-8 w-8" onClick={() => openEdit(zone)}>

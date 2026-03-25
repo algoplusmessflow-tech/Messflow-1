@@ -67,34 +67,47 @@ export async function createInvoiceRecord(params: CreateInvoiceParams) {
   const periodStart = billingPeriodStart || today;
   const periodEnd = billingPeriodEnd || nextMonthStr;
 
-  // Create invoice record
-  const { data: invoice, error } = await supabase
+  // Build insert data — only include base columns that always exist
+  const insertData: Record<string, any> = {
+    owner_id: ownerId,
+    invoice_number: invNumber,
+    member_id: memberId,
+    billing_period_start: periodStart,
+    billing_period_end: periodEnd,
+    subtotal,
+    tax_rate: taxRate,
+    tax_amount: taxAmount,
+    total_amount: totalAmount,
+    notes: notes || (source === 'member_signup'
+      ? `Auto-generated on member signup for ${memberName}`
+      : source === 'renewal'
+        ? `Renewal invoice for ${memberName}`
+        : source === 'payment'
+          ? `Payment recorded for ${memberName}`
+          : null),
+    status: 'paid',
+    due_date: periodEnd,
+    paid_date: today,
+  };
+
+  // Create invoice record — try with extended columns first, fall back to base
+  let result = await supabase
     .from('invoices')
-    .insert({
-      owner_id: ownerId,
-      invoice_number: invNumber,
-      member_id: memberId,
-      customer_phone: memberPhone,
-      billing_period_start: periodStart,
-      billing_period_end: periodEnd,
-      subtotal,
-      tax_rate: taxRate,
-      tax_amount: taxAmount,
-      total_amount: totalAmount,
-      notes: notes || (source === 'member_signup'
-        ? `Auto-generated on member signup for ${memberName}`
-        : source === 'renewal'
-          ? `Renewal invoice for ${memberName}`
-          : source === 'payment'
-            ? `Payment recorded for ${memberName}`
-            : null),
-      status: 'paid', // auto-invoices from payments are already paid
-      due_date: periodEnd,
-      paid_date: today,
-      source,
-    } as any)
+    .insert({ ...insertData, customer_phone: memberPhone, source } as any)
     .select()
     .single();
+
+  // If extended columns don't exist yet, retry with base columns only
+  if (result.error && (result.error.message?.includes('customer_phone') || result.error.message?.includes('source') || result.error.code === '42703')) {
+    console.warn('[createInvoiceRecord] Extended columns missing, using base insert');
+    result = await supabase
+      .from('invoices')
+      .insert(insertData as any)
+      .select()
+      .single();
+  }
+
+  const { data: invoice, error } = result;
 
   if (error) {
     console.error('[createInvoiceRecord] Failed to create invoice:', error);

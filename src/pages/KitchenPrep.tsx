@@ -165,7 +165,7 @@ export default function KitchenPrep() {
         </div>
 
         {/* Summary Cards */}
-        <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-4">
+        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-2 sm:gap-4">
           <StatCard
             title="Total Deliveries"
             value={prepSummary.totalMeals}
@@ -365,34 +365,31 @@ export default function KitchenPrep() {
                 {filteredList.map((member) => (
                   <Card key={member.id} className="hover:bg-muted/50 transition-colors">
                     <CardContent className="py-3">
-                      <div className="flex items-center justify-between">
-                        <div className="flex items-center gap-4">
-                          <div className="flex flex-col">
-                            <span className="font-medium">{member.name}</span>
-                            <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                              <Phone className="h-3 w-3" />
-                              {member.phone}
+                      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
+                        <div className="flex items-center gap-3 min-w-0">
+                          <div className="flex flex-col min-w-0">
+                            <span className="font-medium text-sm truncate">{member.name}</span>
+                            <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                              <Phone className="h-3 w-3 flex-shrink-0" />
+                              <span className="truncate">{member.phone}</span>
+                              {member.deliveryAreaName && (
+                                <><span>·</span><MapPin className="h-3 w-3 flex-shrink-0" /><span className="truncate">{member.deliveryAreaName}</span></>
+                              )}
                             </div>
                           </div>
-                          {member.deliveryAreaName && (
-                            <div className="flex items-center gap-1 text-sm text-muted-foreground">
-                              <MapPin className="h-3 w-3" />
-                              {member.deliveryAreaName}
-                            </div>
-                          )}
                         </div>
-                        <div className="flex items-center gap-3">
+                        <div className="flex items-center gap-1.5 flex-wrap">
                           {getMealTypeBadge(member.mealType)}
                           {getDietBadge(member.dietaryPreference)}
                           <div className="flex items-center gap-1 text-sm">
                             <span className="font-medium">{member.rotiQuantity}</span>
-                            <Wheat className="h-4 w-4 text-amber-500" />
+                            <Wheat className="h-3.5 w-3.5 text-amber-500" />
                           </div>
-                          <div className="text-sm text-muted-foreground min-w-[80px]">
+                          <Badge variant="outline" className="text-[10px]">
                             {getRiceLabel(member.riceType)}
-                          </div>
+                          </Badge>
                           {member.freeTrial && (
-                            <Badge variant="outline" className="bg-green-50 text-green-700 border-green-200">
+                            <Badge variant="outline" className="text-[10px] bg-green-50 text-green-700 border-green-200">
                               Trial
                             </Badge>
                           )}

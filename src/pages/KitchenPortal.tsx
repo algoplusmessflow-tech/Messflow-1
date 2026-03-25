@@ -14,7 +14,7 @@ import { toast } from 'sonner';
 import { format, addDays, subDays } from 'date-fns';
 import {
   ChefHat, UtensilsCrossed, Leaf, Beef, ChevronLeft, ChevronRight,
-  MapPin, Users, Loader2, Wheat, Printer, Download, Package, User, Calendar, Clock, Eye, ArrowRight, RefreshCw, Smartphone, Monitor
+  MapPin, Users, Loader2, Wheat, Printer, Download, Package, User, Calendar, Clock, Eye, ArrowRight, RefreshCw, Smartphone, Monitor, AlertTriangle, Plus, Trash2, CheckCircle
 } from 'lucide-react';
 
 type PrepMember = {
@@ -91,18 +91,23 @@ export default function KitchenPortal() {
     const fetchInventory = async () => {
       setInventoryLoading(true);
       try {
-        const { data } = await supabase
+        const { data, error } = await supabase
           .from('inventory')
-          .select('id, name, unit, quantity')
+          .select('id, item_name, unit, quantity')
           .eq('owner_id', ownerId)
-          .order('name');
+          .order('item_name');
         
-        setInventoryItems((data || []).map((d: any) => ({ 
-          id: d.id, 
-          name: d.name, 
-          unit: d.unit || 'pcs', 
-          available_qty: d.quantity || 0 
-        })));
+        if (error) {
+          console.error('Inventory fetch error:', error.message, error.code);
+          // If table doesn't exist or RLS blocks, show empty state
+        } else {
+          setInventoryItems((data || []).map((d: any) => ({ 
+            id: d.id, 
+            name: d.item_name, 
+            unit: d.unit || 'pcs', 
+            available_qty: d.quantity || 0 
+          })));
+        }
         setLastUpdated(new Date());
       } catch (error) {
         console.error('Failed to fetch inventory:', error);
@@ -228,13 +233,23 @@ export default function KitchenPortal() {
 
   const getLabelStyles = (fmt: LabelFormat) => {
     const sz = LABEL_SIZES[fmt];
+    // 3 tiers: large (2-col), medium (3-col), small (4-col stickers)
+    const isSmall = sz.cols >= 4;
+    const isMed = sz.cols === 3;
+    const nameSz = isSmall ? '12px' : isMed ? '15px' : '18px';
+    const badgeSz = isSmall ? '10px' : isMed ? '12px' : '14px';
+    const infoSz = isSmall ? '10px' : isMed ? '12px' : '13px';
+    // App brand: warm orange #e85d04 (hsl 20 90% 48%)
     return `
-      .labels { display: grid; grid-template-columns: repeat(${sz.cols}, 1fr); gap: 4px; }
-      .label { border: 2px solid #000; border-radius: 4px; padding: 6px 8px; page-break-inside: avoid; width: ${sz.w}; min-height: ${sz.h}; background: white; }
-      .label-line1 { font-weight: bold; font-size: ${sz.cols >= 4 ? '9px' : sz.cols >= 3 ? '11px' : '13px'}; border-bottom: 1px solid #999; padding-bottom: 3px; margin-bottom: 4px; color: #000; }
-      .label-line2 { display: flex; gap: 5px; font-size: ${sz.cols >= 4 ? '8px' : '9px'}; flex-wrap: wrap; }
-      .label-line2 span { background: #e5e5e5; padding: 1px 4px; border-radius: 3px; font-weight: 600; color: #000; }
-      .label-zone { font-size: ${sz.cols >= 4 ? '7px' : '8px'}; color: #333; margin-top: 3px; font-weight: 500; }
+      @import url('https://fonts.googleapis.com/css2?family=DM+Sans:wght@500;700;800&display=swap');
+      * { font-family: 'DM Sans', -apple-system, sans-serif; }
+      .labels { display: grid; grid-template-columns: repeat(${sz.cols}, 1fr); gap: 8px; }
+      .label { border: 2.5px solid #e85d04; border-radius: 8px; padding: 10px 12px; page-break-inside: avoid; width: ${sz.w}; background: #fff; position: relative; overflow: hidden; }
+      .label::before { content: ''; position: absolute; top: 0; left: 0; right: 0; height: 3px; background: linear-gradient(90deg, #e85d04, #f59e0b); }
+      .label-line1 { font-weight: 800; font-size: ${nameSz}; color: #1a1a1a; padding-bottom: 5px; margin-bottom: 6px; border-bottom: 1.5px solid #fed7aa; letter-spacing: -0.3px; }
+      .label-line2 { display: flex; gap: 5px; font-size: ${badgeSz}; flex-wrap: wrap; margin-bottom: 5px; }
+      .label-line2 span { background: #e85d04; color: #fff; padding: 2px 10px; border-radius: 20px; font-weight: 700; }
+      .label-zone { font-size: ${infoSz}; color: #78350f; margin-top: 4px; font-weight: 600; line-height: 1.4; }
     `;
   };
 
@@ -306,37 +321,49 @@ export default function KitchenPortal() {
     const w = window.open('', '_blank');
     if (!w) { toast.error('Popup blocked'); return; }
 
-    // No customer names/phones in the PDF — only counts and meal details
-    const rows = members.map((m, i) => `
-      <tr>
-        <td>${i + 1}</td>
-        <td>${mealLabel(m.meal_type)}</td>
-        <td>${m.roti_quantity}</td>
-        <td>${m.rice_type?.replace(/_/g, ' ')}</td>
-        <td>${dietLabel(m.dietary_preference)}</td>
-        <td>${m.delivery_area_name || '-'}</td>
-        <td>${m.free_trial ? 'Trial' : m.plan_type}</td>
-      </tr>
-    `).join('');
+    // Zone breakdown for the prep sheet
+    const zoneData: Record<string, { total: number; veg: number; nv: number; rotis: number; lunch: number; dinner: number }> = {};
+    members.forEach((m) => {
+      const zone = m.delivery_area_name || 'Unassigned';
+      if (!zoneData[zone]) zoneData[zone] = { total: 0, veg: 0, nv: 0, rotis: 0, lunch: 0, dinner: 0 };
+      zoneData[zone].total++;
+      if (m.dietary_preference === 'veg') zoneData[zone].veg++;
+      else if (m.dietary_preference === 'non_veg') zoneData[zone].nv++;
+      zoneData[zone].rotis += m.roti_quantity || 0;
+      if (['lunch', 'both', 'breakfast_lunch', 'all_three'].includes(m.meal_type)) zoneData[zone].lunch++;
+      if (['dinner', 'both', 'all_three'].includes(m.meal_type)) zoneData[zone].dinner++;
+    });
+
+    const zoneRows = Object.entries(zoneData).map(([zone, d]) =>
+      `<tr><td>${zone}</td><td>${d.total}</td><td>${d.lunch}</td><td>${d.dinner}</td><td>${d.veg}</td><td>${d.nv}</td><td>${d.rotis}</td></tr>`
+    ).join('');
+
+    // Rice type breakdown
+    const riceCount: Record<string, number> = {};
+    members.forEach((m) => { const r = m.rice_type?.replace(/_/g, ' ') || 'None'; riceCount[r] = (riceCount[r] || 0) + 1; });
+    const riceHtml = Object.entries(riceCount).map(([r, c]) => `<div class="stat"><div class="stat-val">${c}</div><div class="stat-label">${r}</div></div>`).join('');
+
+    // Special notes (no customer names)
+    const notesMembers = members.filter(m => m.special_notes);
+    const notesHtml = notesMembers.length > 0
+      ? `<h3 style="margin-top:20px;font-size:14px;">Special Instructions (${notesMembers.length})</h3>
+         <table><thead><tr><th>#</th><th>Meal</th><th>Diet</th><th>Zone</th><th>Note</th></tr></thead><tbody>
+         ${notesMembers.map((m, i) => `<tr><td>${i+1}</td><td>${mealLabel(m.meal_type)}</td><td>${dietLabel(m.dietary_preference)}</td><td>${m.delivery_area_name || '-'}</td><td style="color:#b45309;font-weight:600">${m.special_notes}</td></tr>`).join('')}
+         </tbody></table>` : '';
 
     w.document.write(`<!DOCTYPE html><html><head><title>Kitchen Prep — ${format(selectedDate, 'dd MMM yyyy')}</title>
       <style>
-        * { margin: 0; padding: 0; box-sizing: border-box; }
-        body { font-family: Arial, sans-serif; padding: 20px; font-size: 12px; }
-        h1 { font-size: 18px; margin-bottom: 4px; }
-        h2 { font-size: 14px; color: #666; margin-bottom: 16px; }
-        .stats { display: flex; gap: 16px; margin-bottom: 16px; flex-wrap: wrap; }
-        .stat { background: #f5f5f5; padding: 8px 14px; border-radius: 6px; }
-        .stat-val { font-size: 18px; font-weight: bold; }
-        .stat-label { font-size: 10px; color: #888; }
-        table { width: 100%; border-collapse: collapse; margin-top: 12px; }
-        th, td { border: 1px solid #ddd; padding: 5px 8px; text-align: left; font-size: 11px; }
-        th { background: #f0f0f0; font-weight: 600; }
-        .no-print { text-align: center; margin: 10px 0; }
-        @media print { .no-print { display: none; } }
+        *{margin:0;padding:0;box-sizing:border-box}body{font-family:-apple-system,system-ui,sans-serif;padding:24px;font-size:12px;color:#1a1a1a}
+        h1{font-size:20px;margin-bottom:4px}h2{font-size:13px;color:#666;margin-bottom:16px}h3{font-size:13px;margin-bottom:8px}
+        .stats{display:flex;gap:12px;margin-bottom:16px;flex-wrap:wrap}
+        .stat{background:#f5f5f5;padding:8px 14px;border-radius:6px;text-align:center;min-width:70px}
+        .stat-val{font-size:20px;font-weight:700}.stat-label{font-size:10px;color:#888;margin-top:2px}
+        table{width:100%;border-collapse:collapse;margin:12px 0}th,td{border:1px solid #ddd;padding:6px 10px;text-align:left;font-size:11px}
+        th{background:#f0f0f0;font-weight:600;font-size:10px;text-transform:uppercase;letter-spacing:0.5px}
+        .no-print{text-align:center;margin-bottom:16px}@media print{.no-print{display:none}body{padding:12px}}
       </style></head><body>
-      <div class="no-print"><button onclick="window.print()" style="padding:8px 20px;font-size:14px;cursor:pointer;">Print / Save as PDF</button></div>
-      <h1>${businessName} — Kitchen Prep</h1>
+      <div class="no-print"><button onclick="window.print()" style="padding:10px 24px;font-size:14px;cursor:pointer;border:1px solid #ddd;border-radius:6px;background:#fff">Print / Save as PDF</button></div>
+      <h1>${businessName} — Kitchen Prep Sheet</h1>
       <h2>${format(selectedDate, 'EEEE, dd MMMM yyyy')}</h2>
       <div class="stats">
         <div class="stat"><div class="stat-val">${summary.total}</div><div class="stat-label">Total Meals</div></div>
@@ -346,40 +373,45 @@ export default function KitchenPortal() {
         <div class="stat"><div class="stat-val">${summary.veg}</div><div class="stat-label">Veg</div></div>
         <div class="stat"><div class="stat-val">${summary.nonVeg}</div><div class="stat-label">Non-Veg</div></div>
       </div>
+      <h3>Rice Breakdown</h3>
+      <div class="stats">${riceHtml}</div>
+      <h3>Prep by Zone</h3>
       <table>
-        <thead><tr><th>#</th><th>Meal</th><th>Roti</th><th>Rice</th><th>Diet</th><th>Zone</th><th>Plan</th></tr></thead>
-        <tbody>${rows}</tbody>
-      </table></body></html>`);
+        <thead><tr><th>Zone</th><th>Total</th><th>Lunch</th><th>Dinner</th><th>Veg</th><th>NV</th><th>Rotis</th></tr></thead>
+        <tbody>${zoneRows}</tbody>
+      </table>
+      ${notesHtml}
+    </body></html>`);
     w.document.close();
   };
 
   if (loading) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-gray-50">
+      <div className="min-h-screen flex items-center justify-center bg-gradient-to-b from-primary/5 to-background">
         <Loader2 className="h-8 w-8 animate-spin text-emerald-500" />
       </div>
     );
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-50 via-blue-50 to-indigo-100">
+    <div className="min-h-screen bg-gradient-to-b from-primary/5 to-background">
       {/* Header */}
-      <header className="bg-white/95 backdrop-blur-md shadow-lg border-b border-indigo-100 sticky top-0 z-50">
+      <header className="bg-card/80 backdrop-blur-xl border-b sticky top-0 z-50">
         <div className="max-w-[1600px] mx-auto px-4 py-3 flex items-center justify-between">
           <div className="flex items-center gap-3">
-            <div className="w-12 h-12 bg-gradient-to-br from-indigo-500 via-purple-500 to-pink-500 rounded-xl flex items-center justify-center shadow-xl transform hover:scale-105 transition-transform">
+            <div className="w-12 h-12 bg-primary rounded-xl flex items-center justify-center shadow-sm transform hover:scale-105 transition-transform">
               <ChefHat className="h-6 w-6 text-white" />
             </div>
             <div>
-              <h1 className="font-extrabold text-gray-900 text-lg tracking-tight">{businessName}</h1>
-              <p className="text-xs text-gray-700 font-semibold">Kitchen Management Portal</p>
+              <h1 className="font-bold text-foreground text-lg tracking-tight">{businessName}</h1>
+              <p className="text-xs text-foreground font-semibold">Kitchen Management Portal</p>
             </div>
           </div>
           <div className="flex items-center gap-2">
             <Button 
               variant="ghost" 
               size="icon" 
-              className="h-9 w-9 hover:bg-indigo-50 transition-colors hidden sm:flex" 
+              className="h-9 w-9 hover:bg-primary/5 transition-colors hidden sm:flex" 
               onClick={() => setSelectedDate((d) => subDays(d, 1))}
             >
               <ChevronLeft className="h-4 w-4" />
@@ -389,13 +421,13 @@ export default function KitchenPortal() {
                 type="date"
                 value={format(selectedDate, 'yyyy-MM-dd')}
                 onChange={(e) => setSelectedDate(new Date(e.target.value))}
-                className="h-9 w-full sm:w-40 text-xs border-2 border-indigo-200 text-center font-semibold bg-white/80 focus:border-indigo-400"
+                className="h-9 w-full sm:w-40 text-xs border border-border text-center font-semibold bg-card focus:border-primary"
               />
             </div>
             <Button 
               variant="ghost" 
               size="icon" 
-              className="h-9 w-9 hover:bg-indigo-50 transition-colors hidden sm:flex" 
+              className="h-9 w-9 hover:bg-primary/5 transition-colors hidden sm:flex" 
               onClick={() => setSelectedDate((d) => addDays(d, 1))}
             >
               <ChevronRight className="h-4 w-4" />
@@ -416,9 +448,9 @@ export default function KitchenPortal() {
       <main className="max-w-[1600px] mx-auto px-4 py-6 space-y-6">
         {/* Next Day Menu Preview */}
         {nextDayMenu && (
-          <Card className="border-2 border-indigo-200 bg-gradient-to-r from-indigo-50 via-purple-50 to-pink-50 shadow-lg">
+          <Card className="border border-border bg-primary/5 shadow-sm">
             <CardHeader className="pb-3">
-              <CardTitle className="text-sm font-bold flex items-center gap-2 text-indigo-900">
+              <CardTitle className="text-sm font-bold flex items-center gap-2 text-foreground">
                 <Eye className="h-4 w-4" />
                 Tomorrow's Menu Preview — {format(addDays(selectedDate, 1), 'EEEE, MMM dd')}
               </CardTitle>
@@ -426,70 +458,68 @@ export default function KitchenPortal() {
             <CardContent>
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                 {nextDayMenu.breakfast && (
-                  <div className="bg-white/90 backdrop-blur rounded-xl p-3 border-2 border-indigo-200 shadow-md">
-                    <p className="text-[10px] font-bold text-indigo-600 mb-1.5">🌅 BREAKFAST</p>
-                    <p className="text-xs font-bold text-gray-900 leading-snug">{nextDayMenu.breakfast}</p>
+                  <div className="bg-card backdrop-blur rounded-xl p-3 border border-border shadow-md">
+                    <p className="text-[10px] font-bold text-primary mb-1.5">🌅 BREAKFAST</p>
+                    <p className="text-xs font-bold text-foreground leading-snug">{nextDayMenu.breakfast}</p>
                   </div>
                 )}
                 {nextDayMenu.lunch && (
-                  <div className="bg-white/90 backdrop-blur rounded-xl p-3 border-2 border-indigo-200 shadow-md">
+                  <div className="bg-card backdrop-blur rounded-xl p-3 border border-border shadow-md">
                     <p className="text-[10px] font-bold text-orange-600 mb-1.5">☀️ LUNCH</p>
-                    <p className="text-xs font-bold text-gray-900 leading-snug">{nextDayMenu.lunch}</p>
+                    <p className="text-xs font-bold text-foreground leading-snug">{nextDayMenu.lunch}</p>
                   </div>
                 )}
                 {nextDayMenu.dinner && (
-                  <div className="bg-white/90 backdrop-blur rounded-xl p-3 border-2 border-indigo-200 shadow-md">
-                    <p className="text-[10px] font-bold text-purple-600 mb-1.5">🌙 DINNER</p>
-                    <p className="text-xs font-bold text-gray-900 leading-snug">{nextDayMenu.dinner}</p>
+                  <div className="bg-card backdrop-blur rounded-xl p-3 border border-border shadow-md">
+                    <p className="text-[10px] font-bold text-violet-500 mb-1.5">🌙 DINNER</p>
+                    <p className="text-xs font-bold text-foreground leading-snug">{nextDayMenu.dinner}</p>
                   </div>
                 )}
               </div>
             </CardContent>
           </Card>
         )}
-        {/* Summary Stats */}
-        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-7 gap-3">
-          <Card className="border-2 border-blue-200 bg-gradient-to-br from-blue-50 via-blue-100 to-indigo-100 shadow-lg hover:shadow-xl transition-shadow">
-            <CardContent className="p-4 text-center">
-              <p className="text-3xl font-extrabold text-blue-900">{summary.total}</p>
-              <p className="text-[10px] text-blue-700 font-bold mt-1">Total Meals</p>
-            </CardContent>
-          </Card>
-          <Card className="border-2 border-amber-200 bg-gradient-to-br from-amber-50 via-orange-50 to-yellow-100 shadow-lg hover:shadow-xl transition-shadow">
-            <CardContent className="p-4 text-center">
-              <p className="text-2xl font-extrabold text-amber-900">{summary.lunch}</p>
-              <p className="text-[10px] text-amber-700 font-bold mt-1">Lunch</p>
-            </CardContent>
-          </Card>
-          <Card className="border-2 border-purple-200 bg-gradient-to-br from-purple-50 via-pink-50 to-fuchsia-100 shadow-lg hover:shadow-xl transition-shadow">
-            <CardContent className="p-4 text-center">
-              <p className="text-2xl font-extrabold text-purple-900">{summary.dinner}</p>
-              <p className="text-[10px] text-purple-700 font-bold mt-1">Dinner</p>
-            </CardContent>
-          </Card>
-          <Card className="border-2 border-emerald-200 bg-gradient-to-br from-emerald-50 via-green-50 to-teal-100 shadow-lg hover:shadow-xl transition-shadow">
-            <CardContent className="p-3 text-center"><p className="text-xl font-extrabold text-emerald-900">{summary.totalRotis}</p><p className="text-[10px] text-emerald-700 font-bold mt-1">Rotis</p></CardContent>
-          </Card>
-          <Card className="border-2 border-green-200 bg-gradient-to-br from-green-50 via-lime-50 to-emerald-100 shadow-lg hover:shadow-xl transition-shadow">
-            <CardContent className="p-3 text-center"><p className="text-xl font-extrabold text-green-900">{summary.veg}</p><p className="text-[10px] text-green-700 font-bold mt-1">Veg</p></CardContent>
-          </Card>
-          <Card className="border-2 border-red-200 bg-gradient-to-br from-red-50 via-rose-50 to-pink-100 shadow-lg hover:shadow-xl transition-shadow">
-            <CardContent className="p-3 text-center"><p className="text-xl font-extrabold text-red-900">{summary.nonVeg}</p><p className="text-[10px] text-red-700 font-bold mt-1">Non-Veg</p></CardContent>
-          </Card>
-          <Card className="border-2 border-cyan-200 bg-gradient-to-br from-cyan-50 via-sky-50 to-blue-100 shadow-lg hover:shadow-xl transition-shadow">
-            <CardContent className="p-3 text-center"><p className="text-xl font-extrabold text-cyan-900">{summary.breakfast}</p><p className="text-[10px] text-cyan-700 font-bold mt-1">Breakfast</p></CardContent>
-          </Card>
+        {/* Summary Stats — single clean grid */}
+        <div className="grid grid-cols-3 sm:grid-cols-4 lg:grid-cols-7 gap-2">
+          <Card className="border-0 shadow-sm"><CardContent className="p-3 text-center">
+            <p className="text-2xl font-bold text-foreground">{summary.total}</p>
+            <p className="text-[10px] text-muted-foreground">Total Meals</p>
+          </CardContent></Card>
+          <Card className="border-0 shadow-sm"><CardContent className="p-3 text-center">
+            <p className="text-xl font-bold text-amber-600">{summary.lunch}</p>
+            <p className="text-[10px] text-muted-foreground">Lunch</p>
+          </CardContent></Card>
+          <Card className="border-0 shadow-sm"><CardContent className="p-3 text-center">
+            <p className="text-xl font-bold text-violet-500">{summary.dinner}</p>
+            <p className="text-[10px] text-muted-foreground">Dinner</p>
+          </CardContent></Card>
+          <Card className="border-0 shadow-sm"><CardContent className="p-3 text-center">
+            <p className="text-xl font-bold text-foreground">{summary.totalRotis}</p>
+            <p className="text-[10px] text-muted-foreground">Rotis</p>
+          </CardContent></Card>
+          <Card className="border-0 shadow-sm"><CardContent className="p-3 text-center">
+            <p className="text-xl font-bold text-green-600">{summary.veg}</p>
+            <p className="text-[10px] text-muted-foreground">Veg</p>
+          </CardContent></Card>
+          <Card className="border-0 shadow-sm"><CardContent className="p-3 text-center">
+            <p className="text-xl font-bold text-red-600">{summary.nonVeg}</p>
+            <p className="text-[10px] text-muted-foreground">Non-Veg</p>
+          </CardContent></Card>
+          <Card className="border-0 shadow-sm"><CardContent className="p-3 text-center">
+            <p className="text-xl font-bold text-blue-600">{summary.breakfast}</p>
+            <p className="text-[10px] text-muted-foreground">Breakfast</p>
+          </CardContent></Card>
         </div>
 
         {/* Actions */}
-        <Card className="border-2 border-indigo-200 bg-white shadow-xl">
+        <Card className="border border-border bg-card shadow-sm">
           <CardContent className="p-4 space-y-4">
-            <div className="flex items-center justify-between pb-3 border-b-2 border-indigo-100">
-              <h3 className="text-sm font-bold text-gray-900 flex items-center gap-2">
-                <Printer className="h-4 w-4 text-indigo-600" />
+            <div className="flex items-center justify-between pb-3 border-b-2 border-border">
+              <h3 className="text-sm font-bold text-foreground flex items-center gap-2">
+                <Printer className="h-4 w-4 text-primary" />
                 Print Labels
               </h3>
-              <Badge variant="outline" className="text-xs font-bold border-indigo-300 text-indigo-700 bg-indigo-50">
+              <Badge variant="outline" className="text-xs font-bold border-primary/30 text-primary bg-primary/5">
                 {members.length} labels ready
               </Badge>
             </div>
@@ -498,7 +528,7 @@ export default function KitchenPortal() {
             <div className="flex flex-col sm:flex-row gap-3">
               <Button 
                 onClick={handlePrintLabels} 
-                className="flex-1 h-12 text-base font-bold bg-gradient-to-r from-indigo-600 via-purple-600 to-pink-600 hover:from-indigo-700 hover:via-purple-700 hover:to-pink-700 shadow-xl border-0"
+                className="flex-1 h-12 text-base font-bold bg-primary hover:bg-primary/90 shadow-sm border-0"
               >
                 <Printer className="h-5 w-5 mr-2" /> 
                 Print Labels
@@ -506,7 +536,7 @@ export default function KitchenPortal() {
               <Button 
                 onClick={handleDownloadPDF} 
                 variant="outline" 
-                className="flex-1 h-12 text-base font-bold border-2 border-indigo-300 hover:bg-indigo-50 shadow-md"
+                className="flex-1 h-12 text-base font-bold border-2 border-primary/30 hover:bg-primary/5 shadow-md"
               >
                 <Download className="h-5 w-5 mr-2" /> 
                 Download Prep Sheet
@@ -515,123 +545,111 @@ export default function KitchenPortal() {
           </CardContent>
         </Card>
 
-        {/* Today's Meals Overview */}
+
+        {/* Today's Prep Overview — NO customer names, zone-wise + special notes */}
         {membersLoading ? (
-          <div className="flex justify-center py-12"><Loader2 className="h-8 w-8 animate-spin text-indigo-500" /></div>
+          <div className="flex justify-center py-12"><Loader2 className="h-6 w-6 animate-spin text-primary" /></div>
         ) : members.length === 0 ? (
-          <Card className="border-2 border-gray-200 bg-white shadow-lg">
+          <Card className="border-0 shadow-sm">
             <CardContent className="py-12 text-center">
-              <ChefHat className="h-16 w-16 mx-auto text-gray-300 mb-4" />
-              <p className="text-gray-700 font-bold">No meals to prepare for this date</p>
+              <ChefHat className="h-12 w-12 mx-auto text-muted-foreground mb-3" />
+              <p className="text-muted-foreground">No meals to prepare for this date</p>
             </CardContent>
           </Card>
         ) : (
-          <Card className="border-2 border-indigo-200 bg-white shadow-xl">
-            <CardHeader className="pb-3 bg-gradient-to-r from-indigo-50 via-purple-50 to-pink-50">
-              <CardTitle className="text-sm font-bold flex items-center justify-between text-gray-900">
-                <span className="flex items-center gap-2">
-                  <Users className="h-4 w-4 text-indigo-600" />
-                  Today's Meal Details
-                </span>
-                <Badge variant="outline" className="text-xs font-bold border-indigo-300 bg-white">
-                  {format(selectedDate, 'MMM dd')}
-                </Badge>
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="p-4">
-              {/* Summary Stats at Top */}
-              <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-4 pb-4 border-b-2 border-indigo-100">
-                <div className="text-center p-3 bg-gradient-to-br from-blue-50 to-indigo-50 rounded-xl border-2 border-blue-200">
-                  <p className="text-2xl font-extrabold text-blue-900">{summary.total}</p>
-                  <p className="text-[10px] text-blue-700 font-bold mt-1">Total</p>
-                </div>
-                <div className="text-center p-3 bg-gradient-to-br from-amber-50 to-orange-50 rounded-xl border-2 border-amber-200">
-                  <p className="text-2xl font-extrabold text-amber-900">{summary.lunch}</p>
-                  <p className="text-[10px] text-amber-700 font-bold mt-1">Lunch Only</p>
-                </div>
-                <div className="text-center p-3 bg-gradient-to-br from-purple-50 to-pink-50 rounded-xl border-2 border-purple-200">
-                  <p className="text-2xl font-extrabold text-purple-900">{summary.dinner}</p>
-                  <p className="text-[10px] text-purple-700 font-bold mt-1">Dinner Only</p>
-                </div>
-                <div className="text-center p-3 bg-gradient-to-br from-green-50 to-emerald-50 rounded-xl border-2 border-green-200">
-                  <p className="text-2xl font-extrabold text-green-900">{summary.veg + summary.nonVeg}</p>
-                  <p className="text-[10px] text-green-700 font-bold mt-1">Both Meals</p>
-                </div>
-              </div>
+          <>
+            {/* Zone-wise meal count breakdown */}
+            <Card className="border-0 shadow-sm">
+              <CardHeader className="pb-2">
+                <CardTitle className="text-sm font-medium flex items-center gap-2">
+                  <MapPin className="h-4 w-4 text-primary" />
+                  Prep by Zone — {format(selectedDate, 'dd MMM')}
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-1">
+                {(() => {
+                  const zoneGroups: Record<string, { total: number; veg: number; nv: number; rotis: number }> = {};
+                  members.forEach((m) => {
+                    const zone = m.delivery_area_name || 'Unassigned';
+                    if (!zoneGroups[zone]) zoneGroups[zone] = { total: 0, veg: 0, nv: 0, rotis: 0 };
+                    zoneGroups[zone].total++;
+                    if (m.dietary_preference === 'veg') zoneGroups[zone].veg++;
+                    else if (m.dietary_preference === 'non_veg') zoneGroups[zone].nv++;
+                    zoneGroups[zone].rotis += m.roti_quantity || 0;
+                  });
+                  return Object.entries(zoneGroups).map(([zone, data]) => (
+                    <div key={zone} className="flex items-center justify-between py-2 border-b border-border last:border-0">
+                      <span className="text-sm flex items-center gap-1.5">
+                        <MapPin className="h-3.5 w-3.5 text-muted-foreground" /> {zone}
+                      </span>
+                      <div className="flex items-center gap-2">
+                        <Badge variant="outline" className="text-[10px]">{data.total} meals</Badge>
+                        <Badge variant="outline" className="text-[10px] text-green-600">{data.veg} V</Badge>
+                        <Badge variant="outline" className="text-[10px] text-red-600">{data.nv} NV</Badge>
+                        <Badge variant="outline" className="text-[10px]">{data.rotis} rotis</Badge>
+                      </div>
+                    </div>
+                  ));
+                })()}
+              </CardContent>
+            </Card>
 
-              {/* Detailed Member List */}
-              <ScrollArea className="max-h-[400px] pr-4">
-                <div className="space-y-2">
-                  {members.map((member, idx) => (
-                    <div key={member.id} className="flex items-start justify-between p-3 bg-gradient-to-r from-white via-indigo-50/30 to-white rounded-xl border-2 border-gray-100 hover:border-indigo-300 hover:shadow-md transition-all">
-                      <div className="flex items-start gap-3 flex-1 min-w-0">
-                        <div className="flex-shrink-0 w-8 h-8 bg-gradient-to-br from-indigo-500 to-purple-500 rounded-full flex items-center justify-center text-white font-bold text-xs">
-                          {idx + 1}
-                        </div>
-                        <div className="flex-1 min-w-0 space-y-1">
-                          <div className="flex items-center gap-2">
-                            <p className="text-sm font-bold text-gray-900 truncate">{member.name}</p>
-                            {member.free_trial && (
-                              <Badge className="text-[9px] bg-indigo-100 text-indigo-700 border-indigo-300 font-bold px-1.5 py-0.5">
-                                TRIAL
-                              </Badge>
-                            )}
-                          </div>
-                          <div className="flex flex-wrap gap-1.5">
-                            <Badge variant="outline" className="text-[9px] font-bold border-blue-300 text-blue-700 bg-blue-50">
-                              🍽️ {mealLabel(member.meal_type)}
-                            </Badge>
-                            <Badge variant="outline" className="text-[9px] font-bold border-amber-300 text-amber-700 bg-amber-50">
-                              🫓 {member.roti_quantity} Roti
-                            </Badge>
-                            <Badge variant="outline" className="text-[9px] font-bold border-green-300 text-green-700 bg-green-50">
-                              {dietLabel(member.dietary_preference) === 'VEG' ? '🥬' : dietLabel(member.dietary_preference) === 'NV' ? '🍗' : '🥗'} {dietLabel(member.dietary_preference)}
-                            </Badge>
-                            {member.delivery_area_name && (
-                              <Badge variant="outline" className="text-[9px] font-bold border-purple-300 text-purple-700 bg-purple-50">
-                                📍 {member.delivery_area_name}
-                              </Badge>
-                            )}
-                          </div>
-                        </div>
+            {/* Special Notes — only if any customer has notes */}
+            {members.some(m => m.special_notes) && (
+              <Card className="border-0 shadow-sm">
+                <CardHeader className="pb-2">
+                  <CardTitle className="text-sm font-medium flex items-center gap-2">
+                    <AlertTriangle className="h-4 w-4 text-amber-500" />
+                    Special Instructions ({members.filter(m => m.special_notes).length})
+                  </CardTitle>
+                </CardHeader>
+                <CardContent className="space-y-1.5">
+                  {members.filter(m => m.special_notes).map((m, i) => (
+                    <div key={m.id} className="flex items-start gap-2 py-1.5 border-b border-border last:border-0">
+                      <Badge variant="outline" className="text-[10px] flex-shrink-0">#{i + 1}</Badge>
+                      <div className="text-xs">
+                        <span className="text-muted-foreground">
+                          {mealLabel(m.meal_type)} · {dietLabel(m.dietary_preference)} · {m.delivery_area_name || 'No zone'}
+                        </span>
+                        <p className="text-foreground font-medium mt-0.5">{m.special_notes}</p>
                       </div>
                     </div>
                   ))}
-                </div>
-              </ScrollArea>
-            </CardContent>
-          </Card>
+                </CardContent>
+              </Card>
+            )}
+          </>
         )}
 
-        {/* Real-Time Inventory Section */}
-        <Card className="border-2 border-indigo-200 bg-white shadow-xl">
-          <CardHeader className="pb-3 bg-gradient-to-r from-indigo-50 via-purple-50 to-pink-50">
+        {/* Inventory */}
+        <Card className="border-0 shadow-sm">
+          <CardHeader className="pb-2">
             <div className="flex items-center justify-between">
-              <CardTitle className="text-sm font-bold flex items-center gap-2 text-gray-900">
-                <Package className="h-5 w-5 text-indigo-600" />
-                Live Inventory Stock
+              <CardTitle className="text-sm font-medium flex items-center gap-2">
+                <Package className="h-4 w-4 text-primary" />
+                Inventory Stock
               </CardTitle>
               <div className="flex items-center gap-2">
                 {lastUpdated && (
-                  <p className="text-[10px] text-gray-600 font-medium">
+                  <p className="text-[10px] text-muted-foreground font-medium">
                     Updated: {format(lastUpdated, 'HH:mm:ss')}
                   </p>
                 )}
                 <Button
                   variant="ghost"
                   size="icon"
-                  className="h-8 w-8 hover:bg-indigo-100"
+                  className="h-8 w-8 hover:bg-primary/10"
                   onClick={() => {
                     setInventoryLoading(true);
                     supabase
                       .from('inventory')
-                      .select('id, name, unit, quantity')
+                      .select('id, item_name, unit, quantity')
                       .eq('owner_id', ownerId)
-                      .order('name')
+                      .order('item_name')
                       .then(({ data }) => {
                         setInventoryItems((data || []).map((d: any) => ({ 
                           id: d.id, 
-                          name: d.name, 
+                          name: d.item_name, 
                           unit: d.unit || 'pcs', 
                           available_qty: d.quantity || 0 
                         })));
@@ -648,10 +666,6 @@ export default function KitchenPortal() {
             </div>
           </CardHeader>
           <CardContent>
-            <p className="text-xs text-gray-700 font-medium mb-4 flex items-center gap-2">
-              <span className="w-2 h-2 bg-green-500 rounded-full animate-pulse"></span>
-              Real-time updates enabled • Stock changes automatically sync
-            </p>
             <InventoryRequestForm 
               ownerId={ownerId} 
               date={format(selectedDate, 'yyyy-MM-dd')} 
@@ -662,209 +676,67 @@ export default function KitchenPortal() {
         </Card>
       </main>
 
-      {/* Print Size Selection Dialog */}
+      {/* Print Label Dialog */}
       <Dialog open={showPrintDialog} onOpenChange={setShowPrintDialog}>
-        <DialogContent className="max-w-2xl bg-white shadow-2xl max-h-[90vh] overflow-y-auto">
+        <DialogContent className="max-w-md max-h-[85vh] overflow-y-auto">
           <DialogHeader>
-            <DialogTitle className="flex items-center gap-2 text-lg font-bold sticky top-0 bg-white pb-3 border-b">
-              <Printer className="h-6 w-6 text-indigo-600" />
-              Select Label Size & Print
+            <DialogTitle className="flex items-center gap-2 text-sm font-bold">
+              <Printer className="h-4 w-4 text-primary" />
+              Print Labels ({members.length})
             </DialogTitle>
-            <DialogDescription className="text-sm text-gray-700 sticky top-14 bg-white pt-2">
-              Choose sticker size and customize label content
-            </DialogDescription>
           </DialogHeader>
           
-          <div className="space-y-6 py-4">
+          <div className="space-y-4">
             {/* Size Selector */}
-            <div className="space-y-2">
-              <Label className="text-sm font-bold text-gray-900">Sticker Dimensions:</Label>
+            <div className="space-y-1.5">
+              <Label className="text-xs text-muted-foreground">Sticker Size</Label>
               <Select value={printSize} onValueChange={(v) => setPrintSize(v as LabelFormat)}>
-                <SelectTrigger className="w-full h-12 border-2 border-indigo-300 bg-white shadow-md">
-                  <SelectValue placeholder="Choose sticker size" />
+                <SelectTrigger className="h-9">
+                  <SelectValue />
                 </SelectTrigger>
-                <SelectContent className="bg-white shadow-xl max-h-64" style={{ zIndex: '9999', position: 'fixed' }}>
+                <SelectContent>
                   {Object.entries(LABEL_SIZES).map(([key, sz]) => (
-                    <SelectItem key={key} value={key} className="text-sm py-3 hover:bg-indigo-50 cursor-pointer">
-                      <div className="flex items-center justify-between w-full gap-4">
-                        <span className="font-bold text-gray-900">{sz.name.split(' (')[0]}</span>
-                        <span className="text-xs text-indigo-600 font-mono font-semibold flex-shrink-0 bg-indigo-50 px-2 py-1 rounded">
-                          {sz.w} × {sz.h}
-                        </span>
-                      </div>
-                    </SelectItem>
+                    <SelectItem key={key} value={key}>{sz.name}</SelectItem>
                   ))}
                 </SelectContent>
               </Select>
             </div>
 
-            {/* Content Filters - Toggle Buttons */}
-            <div className="space-y-3">
-              <Label className="text-sm font-bold text-gray-900 block mb-3">Include on Label:</Label>
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                <div className="flex items-center justify-between p-3 bg-gradient-to-r from-indigo-50 to-purple-50 rounded-lg border-2 border-indigo-200">
-                  <div className="flex items-center gap-2">
-                    <User className="h-4 w-4 text-indigo-600" />
-                    <span className="text-sm font-bold text-gray-900">Member Name</span>
+            {/* Label Content Toggles */}
+            <div className="space-y-2">
+              <Label className="text-xs text-muted-foreground">Include on Label</Label>
+              <div className="grid grid-cols-2 gap-2">
+                {[
+                  { label: 'Name', checked: showNameOnLabel, set: setShowNameOnLabel },
+                  { label: 'Phone', checked: showPhoneOnLabel, set: setShowPhoneOnLabel },
+                  { label: 'Meal Type', checked: showMealTypeOnLabel, set: setShowMealTypeOnLabel },
+                  { label: 'Roti Count', checked: showRotiOnLabel, set: setShowRotiOnLabel },
+                  { label: 'Rice Type', checked: showRiceOnLabel, set: setShowRiceOnLabel },
+                  { label: 'Diet', checked: showDietOnLabel, set: setShowDietOnLabel },
+                  { label: 'Zone', checked: showAreaOnLabel, set: setShowAreaOnLabel },
+                  { label: 'Trial Badge', checked: showTrialOnLabel, set: setShowTrialOnLabel },
+                  { label: 'Address', checked: showAddressOnLabel, set: setShowAddressOnLabel },
+                  { label: 'Notes', checked: showNotesOnLabel, set: setShowNotesOnLabel },
+                ].map(({ label, checked, set }) => (
+                  <div key={label} className="flex items-center justify-between py-1.5 px-3 rounded-lg border border-border">
+                    <span className="text-xs font-medium">{label}</span>
+                    <Switch checked={checked} onCheckedChange={set} className="data-[state=checked]:bg-primary scale-75" />
                   </div>
-                  <Switch
-                    checked={showNameOnLabel}
-                    onCheckedChange={setShowNameOnLabel}
-                    className="data-[state=checked]:bg-indigo-600"
-                  />
-                </div>
-                
-                <div className="flex items-center justify-between p-3 bg-gradient-to-r from-blue-50 to-cyan-50 rounded-lg border-2 border-blue-200">
-                  <div className="flex items-center gap-2">
-                    <span className="text-lg">📞</span>
-                    <span className="text-sm font-bold text-gray-900">Phone Number</span>
-                  </div>
-                  <Switch
-                    checked={showPhoneOnLabel}
-                    onCheckedChange={setShowPhoneOnLabel}
-                    className="data-[state=checked]:bg-blue-600"
-                  />
-                </div>
-                
-                <div className="flex items-center justify-between p-3 bg-gradient-to-r from-amber-50 to-orange-50 rounded-lg border-2 border-amber-200">
-                  <div className="flex items-center gap-2">
-                    <span className="text-lg">🍽️</span>
-                    <span className="text-sm font-bold text-gray-900">Meal Type</span>
-                  </div>
-                  <Switch
-                    checked={showMealTypeOnLabel}
-                    onCheckedChange={setShowMealTypeOnLabel}
-                    className="data-[state=checked]:bg-amber-600"
-                  />
-                </div>
-                
-                <div className="flex items-center justify-between p-3 bg-gradient-to-r from-green-50 to-emerald-50 rounded-lg border-2 border-green-200">
-                  <div className="flex items-center gap-2">
-                    <span className="text-lg">🫓</span>
-                    <span className="text-sm font-bold text-gray-900">Roti Count</span>
-                  </div>
-                  <Switch
-                    checked={showRotiOnLabel}
-                    onCheckedChange={setShowRotiOnLabel}
-                    className="data-[state=checked]:bg-green-600"
-                  />
-                </div>
-                
-                <div className="flex items-center justify-between p-3 bg-gradient-to-r from-purple-50 to-pink-50 rounded-lg border-2 border-purple-200">
-                  <div className="flex items-center gap-2">
-                    <span className="text-lg">🍚</span>
-                    <span className="text-sm font-bold text-gray-900">Rice Type</span>
-                  </div>
-                  <Switch
-                    checked={showRiceOnLabel}
-                    onCheckedChange={setShowRiceOnLabel}
-                    className="data-[state=checked]:bg-purple-600"
-                  />
-                </div>
-                
-                <div className="flex items-center justify-between p-3 bg-gradient-to-r from-red-50 to-rose-50 rounded-lg border-2 border-red-200">
-                  <div className="flex items-center gap-2">
-                    <span className="text-lg">🥗</span>
-                    <span className="text-sm font-bold text-gray-900">Diet Preference</span>
-                  </div>
-                  <Switch
-                    checked={showDietOnLabel}
-                    onCheckedChange={setShowDietOnLabel}
-                    className="data-[state=checked]:bg-red-600"
-                  />
-                </div>
-                
-                <div className="flex items-center justify-between p-3 bg-gradient-to-r from-cyan-50 to-sky-50 rounded-lg border-2 border-cyan-200">
-                  <div className="flex items-center gap-2">
-                    <MapPin className="h-4 w-4 text-cyan-600" />
-                    <span className="text-sm font-bold text-gray-900">Delivery Area</span>
-                  </div>
-                  <Switch
-                    checked={showAreaOnLabel}
-                    onCheckedChange={setShowAreaOnLabel}
-                    className="data-[state=checked]:bg-cyan-600"
-                  />
-                </div>
-                
-                <div className="flex items-center justify-between p-3 bg-gradient-to-r from-yellow-50 to-amber-50 rounded-lg border-2 border-yellow-200">
-                  <div className="flex items-center gap-2">
-                    <Badge className="bg-yellow-200 text-yellow-800 border-yellow-300 text-[9px] font-bold px-2 py-0.5">TRIAL</Badge>
-                    <span className="text-sm font-bold text-gray-900">Trial Badge</span>
-                  </div>
-                  <Switch
-                    checked={showTrialOnLabel}
-                    onCheckedChange={setShowTrialOnLabel}
-                    className="data-[state=checked]:bg-yellow-600"
-                  />
-                </div>
-                
-                <div className="flex items-center justify-between p-3 bg-gradient-to-r from-slate-50 to-gray-50 rounded-lg border-2 border-slate-300">
-                  <div className="flex items-center gap-2">
-                    <MapPin className="h-4 w-4 text-slate-600" />
-                    <span className="text-sm font-bold text-gray-900">Full Address</span>
-                  </div>
-                  <Switch
-                    checked={showAddressOnLabel}
-                    onCheckedChange={setShowAddressOnLabel}
-                    className="data-[state=checked]:bg-slate-600"
-                  />
-                </div>
-                
-                <div className="flex items-center justify-between p-3 bg-gradient-to-r from-orange-50 to-red-50 rounded-lg border-2 border-orange-200">
-                  <div className="flex items-center gap-2">
-                    <span className="text-lg">📝</span>
-                    <span className="text-sm font-bold text-gray-900">Special Notes</span>
-                  </div>
-                  <Switch
-                    checked={showNotesOnLabel}
-                    onCheckedChange={setShowNotesOnLabel}
-                    className="data-[state=checked]:bg-orange-600"
-                  />
-                </div>
+                ))}
               </div>
             </div>
-            
-            {/* Preview Box */}
-            <div className="bg-gradient-to-br from-indigo-50 via-purple-50 to-pink-50 rounded-xl p-4 border-2 border-indigo-200 shadow-inner">
-              <p className="text-sm font-bold text-indigo-900 mb-2">📊 Preview:</p>
-              <div className="space-y-1.5">
-                <p className="text-sm text-gray-800 font-semibold">
-                  <span className="text-indigo-600 font-extrabold text-base">{members.length}</span> labels will be printed
-                </p>
-                <p className="text-sm text-gray-800 font-semibold">
-                  Selected: <span className="font-bold text-indigo-600">{LABEL_SIZES[printSize].name}</span>
-                </p>
-                <p className="text-xs text-gray-700 font-medium">
-                  Dimensions: <span className="font-mono font-bold text-gray-900">{LABEL_SIZES[printSize].w} × {LABEL_SIZES[printSize].h}</span>
-                </p>
-                <div className="pt-2 border-t border-indigo-200 mt-2">
-                  <p className="text-xs font-bold text-indigo-900 mb-1">Included fields:</p>
-                  <div className="flex flex-wrap gap-1">
-                    {showNameOnLabel && <Badge className="text-[9px] bg-indigo-200 text-indigo-800">Name</Badge>}
-                    {showPhoneOnLabel && <Badge className="text-[9px] bg-blue-200 text-blue-800">Phone</Badge>}
-                    {showMealTypeOnLabel && <Badge className="text-[9px] bg-amber-200 text-amber-800">Meal</Badge>}
-                    {showRotiOnLabel && <Badge className="text-[9px] bg-green-200 text-green-800">Roti</Badge>}
-                    {showRiceOnLabel && <Badge className="text-[9px] bg-purple-200 text-purple-800">Rice</Badge>}
-                    {showDietOnLabel && <Badge className="text-[9px] bg-red-200 text-red-800">Diet</Badge>}
-                    {showAreaOnLabel && <Badge className="text-[9px] bg-cyan-200 text-cyan-800">Area</Badge>}
-                    {showTrialOnLabel && <Badge className="text-[9px] bg-yellow-200 text-yellow-800">Trial</Badge>}
-                    {showAddressOnLabel && <Badge className="text-[9px] bg-slate-200 text-slate-800">Address</Badge>}
-                    {showNotesOnLabel && <Badge className="text-[9px] bg-orange-200 text-orange-800">Notes</Badge>}
-                  </div>
-                </div>
-              </div>
+            {/* Summary */}
+            <div className="p-3 rounded-lg bg-muted/50 text-xs text-muted-foreground">
+              {members.length} labels · {LABEL_SIZES[printSize].name} · {LABEL_SIZES[printSize].w} × {LABEL_SIZES[printSize].h}
             </div>
           </div>
 
-          <DialogFooter className="sticky bottom-0 bg-white pt-3 border-t">
-            <Button variant="outline" onClick={() => setShowPrintDialog(false)} className="border-2 font-semibold hover:bg-gray-50">
-              Cancel
+          <div className="flex gap-2 pt-2">
+            <Button variant="outline" onClick={() => setShowPrintDialog(false)} className="flex-1">Cancel</Button>
+            <Button onClick={confirmPrintLabels} className="flex-1">
+              <Printer className="h-4 w-4 mr-1" /> Print
             </Button>
-            <Button onClick={confirmPrintLabels} className="bg-gradient-to-r from-indigo-600 via-purple-600 to-pink-600 hover:from-indigo-700 hover:via-purple-700 hover:to-pink-700 font-bold shadow-xl border-0">
-              <Printer className="h-4 w-4 mr-2" />
-              Print Labels
-            </Button>
-          </DialogFooter>
+          </div>
         </DialogContent>
       </Dialog>
     </div>
@@ -872,6 +744,8 @@ export default function KitchenPortal() {
 }
 
 // --- Inventory Request inline component ---
+type CustomRequestRow = { name: string; qty: string; unit: string };
+
 function InventoryRequestForm({ 
   ownerId, 
   date,
@@ -884,80 +758,126 @@ function InventoryRequestForm({
   inventoryLoading: boolean;
 }) {
   const [requests, setRequests] = useState<Record<string, number>>({});
+  const [customRows, setCustomRows] = useState<CustomRequestRow[]>([]);
   const [submitting, setSubmitting] = useState(false);
   const [submitted, setSubmitted] = useState(false);
 
-  useEffect(() => {
-    // No longer fetch here - items are passed as props from parent
-  }, [ownerId]);
+  const addCustomRow = () => setCustomRows([...customRows, { name: '', qty: '', unit: 'kg' }]);
+  const removeCustomRow = (i: number) => setCustomRows(customRows.filter((_, idx) => idx !== i));
+  const updateCustomRow = (i: number, field: keyof CustomRequestRow, val: string) => {
+    const rows = [...customRows]; rows[i] = { ...rows[i], [field]: val }; setCustomRows(rows);
+  };
+
+  // Check if custom item already exists in inventory
+  const isDuplicate = (name: string) => 
+    name.trim() && inventoryItems.some(item => item.name.toLowerCase() === name.trim().toLowerCase());
 
   const handleSubmit = async () => {
     const activeRequests = Object.entries(requests).filter(([, qty]) => qty > 0);
-    if (activeRequests.length === 0) { toast.error('Enter quantity for at least one item'); return; }
+    const validCustom = customRows.filter(r => r.name.trim() && !isDuplicate(r.name));
+    if (activeRequests.length === 0 && validCustom.length === 0) {
+      toast.error('Add at least one request'); return;
+    }
 
     setSubmitting(true);
     try {
-      // Insert into inventory_requests (or consumption log)
-      const inserts = activeRequests.map(([itemId, qty]) => ({
-        owner_id: ownerId,
-        inventory_id: itemId,
-        requested_qty: qty,
-        date,
-        status: 'pending',
-        requested_by: 'kitchen',
-      }));
-
-      const { error } = await supabase.from('inventory_consumption').insert(inserts.map((r) => ({
-        owner_id: r.owner_id,
-        inventory_id: r.inventory_id,
-        quantity_used: r.requested_qty,
-        date: r.date,
-        notes: 'Kitchen request',
-      })) as any);
-
-      if (error) throw error;
-      toast.success(`${activeRequests.length} items requested`);
-      setSubmitted(true);
-      setRequests({});
-    } catch (err: any) {
-      toast.error('Failed: ' + err.message);
-    } finally {
-      setSubmitting(false);
-    }
+      if (activeRequests.length > 0) {
+        await supabase.from('inventory_consumption').insert(activeRequests.map(([itemId, qty]) => ({
+          owner_id: ownerId, inventory_id: itemId, quantity_used: qty, date, notes: 'Kitchen request',
+        })) as any);
+      }
+      for (const row of validCustom) {
+        await supabase.from('inventory_consumption').insert({
+          owner_id: ownerId, inventory_id: null, quantity_used: parseFloat(row.qty) || 0, date,
+          notes: `SPECIAL REQUEST: ${row.name.trim()} (${row.qty} ${row.unit})`,
+        } as any);
+      }
+      toast.success('Request submitted!');
+      setSubmitted(true); setRequests({}); setCustomRows([]);
+    } catch (err: any) { toast.error('Failed: ' + err.message); }
+    finally { setSubmitting(false); }
   };
 
-  if (inventoryLoading) return <div className="flex justify-center py-6"><Loader2 className="h-6 w-6 animate-spin text-indigo-500" /></div>;
-
-  if (inventoryItems.length === 0) return <p className="text-sm text-gray-600 font-medium text-center py-6 bg-gradient-to-br from-gray-50 to-white rounded-xl border-2 border-gray-200">No inventory items configured by the owner</p>;
+  if (inventoryLoading) return <div className="flex justify-center py-4"><Loader2 className="h-5 w-5 animate-spin text-primary" /></div>;
 
   if (submitted) return (
-    <div className="text-center py-6 bg-gradient-to-br from-emerald-50 to-teal-50 rounded-lg border-2 border-emerald-200">
-      <p className="text-base text-emerald-700 font-bold mb-3">✓ Request submitted!</p>
-      <Button variant="outline" size="sm" className="mt-2 font-semibold border-2" onClick={() => setSubmitted(false)}>Make another request</Button>
+    <div className="text-center py-6 rounded-lg border border-border">
+      <CheckCircle className="h-8 w-8 mx-auto text-green-500 mb-2" />
+      <p className="text-sm font-medium mb-2">Request submitted!</p>
+      <Button variant="outline" size="sm" onClick={() => setSubmitted(false)}>New request</Button>
     </div>
   );
 
   return (
     <div className="space-y-3">
-      {inventoryItems.map((item) => (
-        <div key={item.id} className="flex items-center justify-between gap-3 py-3 px-4 border-b-2 border-indigo-100 last:border-0 hover:bg-gradient-to-r hover:from-indigo-50 hover:via-purple-50 hover:to-white transition-all rounded-xl">
-          <div className="min-w-0 flex-1">
-            <p className="text-sm font-bold text-gray-900 truncate">{item.name}</p>
-            <p className="text-xs text-gray-700 font-semibold mt-1">Available: <span className="font-extrabold text-indigo-600 text-base">{item.available_qty}</span> {item.unit}</p>
-          </div>
-          <Input
-            type="number"
-            min={0}
-            placeholder="Qty"
-            className="w-28 h-11 text-sm text-center font-bold border-2 border-indigo-300 focus:border-indigo-500"
-            value={requests[item.id] || ''}
-            onChange={(e) => setRequests({ ...requests, [item.id]: parseFloat(e.target.value) || 0 })}
-          />
-          <span className="text-xs text-gray-600 font-bold w-12 text-right">{item.unit}</span>
+      {/* From stock */}
+      {inventoryItems.length > 0 && (
+        <div className="space-y-1.5">
+          <p className="text-xs font-medium text-muted-foreground">From Stock</p>
+          {inventoryItems.map((item) => (
+            <div key={item.id} className="flex items-center gap-2 py-1.5">
+              <div className="flex-1 min-w-0">
+                <p className="text-sm truncate">{item.name}</p>
+                <p className="text-[10px] text-muted-foreground">{item.available_qty} {item.unit}</p>
+              </div>
+              <Input type="number" min={0} placeholder="0"
+                className="w-16 h-8 text-sm text-center"
+                value={requests[item.id] || ''}
+                onChange={(e) => setRequests({ ...requests, [item.id]: parseFloat(e.target.value) || 0 })}
+              />
+            </div>
+          ))}
         </div>
-      ))}
-      <Button onClick={handleSubmit} className="w-full h-12 font-bold text-base bg-gradient-to-r from-indigo-600 via-purple-600 to-pink-600 hover:from-indigo-700 hover:via-purple-700 hover:to-pink-700 shadow-xl border-0" disabled={submitting}>
-        {submitting ? <Loader2 className="h-5 w-5 animate-spin mr-2" /> : <Package className="h-5 w-5 mr-2" />}
+      )}
+
+      {/* Custom items (bulk template) */}
+      <div className="border-t border-border pt-3">
+        <div className="flex items-center justify-between mb-2">
+          <p className="text-xs font-medium text-muted-foreground">Custom Items (not in stock)</p>
+          <Button variant="ghost" size="sm" className="h-6 text-xs" onClick={addCustomRow}>
+            <Plus className="h-3 w-3 mr-1" /> Add Row
+          </Button>
+        </div>
+        {customRows.length === 0 ? (
+          <Button variant="outline" size="sm" className="w-full h-8 text-xs" onClick={addCustomRow}>
+            <Plus className="h-3 w-3 mr-1" /> Request item not in inventory
+          </Button>
+        ) : (
+          <div className="space-y-2">
+            {customRows.map((row, i) => (
+              <div key={i} className="space-y-1">
+                <div className="flex gap-1.5 items-center">
+                  <Input placeholder="Item name" value={row.name}
+                    onChange={(e) => updateCustomRow(i, 'name', e.target.value)}
+                    className={`h-8 text-sm flex-1 ${isDuplicate(row.name) ? 'border-amber-500' : ''}`}
+                  />
+                  <Input type="number" placeholder="Qty" value={row.qty}
+                    onChange={(e) => updateCustomRow(i, 'qty', e.target.value)}
+                    className="w-16 h-8 text-sm text-center"
+                  />
+                  <select value={row.unit}
+                    onChange={(e) => updateCustomRow(i, 'unit', e.target.value)}
+                    className="h-8 text-xs rounded border border-border bg-background px-1"
+                  >
+                    {['kg','pcs','liters','grams','boxes','packets'].map(u => (
+                      <option key={u} value={u}>{u}</option>
+                    ))}
+                  </select>
+                  <Button variant="ghost" size="icon" className="h-8 w-8 flex-shrink-0" onClick={() => removeCustomRow(i)}>
+                    <Trash2 className="h-3 w-3" />
+                  </Button>
+                </div>
+                {isDuplicate(row.name) && (
+                  <p className="text-[10px] text-amber-500 pl-1">⚠ "{row.name.trim()}" exists in inventory — use stock request above</p>
+                )}
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+
+      <Button onClick={handleSubmit} className="w-full h-9 text-sm" disabled={submitting}>
+        {submitting ? <Loader2 className="h-4 w-4 animate-spin mr-1" /> : <Package className="h-4 w-4 mr-1" />}
         Submit Request
       </Button>
     </div>

@@ -230,19 +230,57 @@ export default function DriverPortal() {
     setIsCompleteDialogOpen(true);
   };
 
-  const handlePhotoSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (file) {
-      if (file.size > 10 * 1024 * 1024) {
-        toast.error('Photo must be less than 10MB');
-        return;
-      }
-      setProofPhoto(file);
-      const reader = new FileReader();
-      reader.onloadend = () => {
-        setProofPhotoPreview(reader.result as string);
+  const compressImage = (file: File, maxWidth = 1200, quality = 0.7): Promise<{ compressedFile: File; previewUrl: string }> => {
+    return new Promise((resolve, reject) => {
+      const img = new Image();
+      const url = URL.createObjectURL(file);
+      img.onload = () => {
+        URL.revokeObjectURL(url);
+        const canvas = document.createElement('canvas');
+        let w = img.width;
+        let h = img.height;
+        if (w > maxWidth) {
+          h = Math.round((h * maxWidth) / w);
+          w = maxWidth;
+        }
+        canvas.width = w;
+        canvas.height = h;
+        const ctx = canvas.getContext('2d');
+        if (!ctx) { reject(new Error('Canvas not supported')); return; }
+        ctx.drawImage(img, 0, 0, w, h);
+        canvas.toBlob(
+          (blob) => {
+            if (!blob) { reject(new Error('Compression failed')); return; }
+            const compressedFile = new File([blob], file.name, { type: 'image/jpeg' });
+            const previewUrl = canvas.toDataURL('image/jpeg', 0.5);
+            canvas.width = 0; canvas.height = 0; // Free canvas memory
+            resolve({ compressedFile, previewUrl });
+          },
+          'image/jpeg',
+          quality
+        );
       };
-      reader.readAsDataURL(file);
+      img.onerror = () => { URL.revokeObjectURL(url); reject(new Error('Failed to load image')); };
+      img.src = url;
+    });
+  };
+
+  const handlePhotoSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    if (file.size > 10 * 1024 * 1024) {
+      toast.error('Photo must be less than 10MB');
+      return;
+    }
+    try {
+      // Compress image to reduce memory usage (fixes "low memory" on mobile)
+      const { compressedFile, previewUrl } = await compressImage(file, 1200, 0.7);
+      setProofPhoto(compressedFile);
+      setProofPhotoPreview(previewUrl);
+    } catch {
+      // Fallback: use original file with object URL (no base64 in memory)
+      setProofPhoto(file);
+      setProofPhotoPreview(URL.createObjectURL(file));
     }
   };
 

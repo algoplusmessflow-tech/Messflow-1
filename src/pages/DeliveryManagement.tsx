@@ -413,7 +413,7 @@ export default function DeliveryManagement() {
       <div className="space-y-6">
         <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
           <div>
-            <h1 className="text-2xl font-bold">Delivery Management</h1>
+            <h1 className="text-xl sm:text-2xl font-bold">Delivery Management</h1>
             <p className="text-muted-foreground">Manage delivery zones and drivers</p>
           </div>
         </div>
