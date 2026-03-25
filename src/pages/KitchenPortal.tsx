@@ -745,6 +745,14 @@ export default function KitchenPortal() {
 
 // --- Inventory Request inline component ---
 type CustomRequestRow = { name: string; qty: string; unit: string };
+type InventoryRequest = {
+  id: string;
+  date: string;
+  created_at: string;
+  status: 'pending' | 'approved' | 'rejected';
+  items: { name: string; qty: number; unit: string; item_id?: string }[];
+  notes?: string;
+};
 
 function InventoryRequestForm({ 
   ownerId, 
@@ -760,7 +768,12 @@ function InventoryRequestForm({
   const [requests, setRequests] = useState<Record<string, number>>({});
   const [customRows, setCustomRows] = useState<CustomRequestRow[]>([]);
   const [submitting, setSubmitting] = useState(false);
-  const [submitted, setSubmitted] = useState(false);
+  const [showRequestDialog, setShowRequestDialog] = useState(false);
+  const [showHistoryDialog, setShowHistoryDialog] = useState(false);
+  const [history, setHistory] = useState<InventoryRequest[]>([]);
+  const [historyLoading, setHistoryLoading] = useState(false);
+  const [selectedRequest, setSelectedRequest] = useState<InventoryRequest | null>(null);
+  const [showDetailDialog, setShowDetailDialog] = useState(false);
 
   const addCustomRow = () => setCustomRows([...customRows, { name: '', qty: '', unit: 'kg' }]);
   const removeCustomRow = (i: number) => setCustomRows(customRows.filter((_, idx) => idx !== i));
@@ -768,118 +781,360 @@ function InventoryRequestForm({
     const rows = [...customRows]; rows[i] = { ...rows[i], [field]: val }; setCustomRows(rows);
   };
 
-  // Check if custom item already exists in inventory
   const isDuplicate = (name: string) => 
     name.trim() && inventoryItems.some(item => item.name.toLowerCase() === name.trim().toLowerCase());
 
-  const handleSubmit = async () => {
-    const activeRequests = Object.entries(requests).filter(([, qty]) => qty > 0);
-    const validCustom = customRows.filter(r => r.name.trim() && !isDuplicate(r.name));
-    if (activeRequests.length === 0 && validCustom.length === 0) {
-      toast.error('Add at least one request'); return;
-    }
+  const activeRequests = Object.entries(requests).filter(([, qty]) => qty > 0);
+  const validCustom = customRows.filter(r => r.name.trim() && !isDuplicate(r.name));
+  const totalItems = activeRequests.length + validCustom.length;
 
+  const fetchHistory = async () => {
+    setHistoryLoading(true);
+    try {
+      const { data } = await supabase
+        .from('inventory_consumption')
+        .select('id, date, created_at, notes, quantity_used, inventory_id')
+        .eq('owner_id', ownerId)
+        .order('created_at', { ascending: false })
+        .limit(50);
+
+      // Group by created_at minute (batch requests)
+      const grouped: Record<string, InventoryRequest> = {};
+      for (const row of (data || [])) {
+        const key = row.created_at?.slice(0, 16) + '_' + row.date;
+        if (!grouped[key]) {
+          grouped[key] = {
+            id: key,
+            date: row.date,
+            created_at: row.created_at,
+            status: 'pending',
+            items: [],
+          };
+        }
+        const itemName = row.inventory_id
+          ? inventoryItems.find(i => i.id === row.inventory_id)?.name || row.inventory_id
+          : row.notes?.replace('SPECIAL REQUEST: ', '').replace(/\s*\(.*\)$/, '') || 'Unknown';
+        const unit = row.inventory_id
+          ? inventoryItems.find(i => i.id === row.inventory_id)?.unit || 'pcs'
+          : row.notes?.match(/\(([^)]+)\)/)?.[1]?.split(' ').pop() || 'pcs';
+        grouped[key].items.push({ name: itemName, qty: row.quantity_used, unit, item_id: row.inventory_id });
+      }
+      setHistory(Object.values(grouped).sort((a, b) => b.created_at.localeCompare(a.created_at)));
+    } catch (err) {
+      console.error(err);
+    } finally {
+      setHistoryLoading(false);
+    }
+  };
+
+  const handleSubmit = async () => {
+    if (totalItems === 0) { toast.error('Add at least one item'); return; }
     setSubmitting(true);
     try {
+      const now = new Date().toISOString();
       if (activeRequests.length > 0) {
         await supabase.from('inventory_consumption').insert(activeRequests.map(([itemId, qty]) => ({
-          owner_id: ownerId, inventory_id: itemId, quantity_used: qty, date, notes: 'Kitchen request',
+          owner_id: ownerId, inventory_id: itemId, quantity_used: qty, date, notes: 'Kitchen request', created_at: now,
         })) as any);
       }
       for (const row of validCustom) {
         await supabase.from('inventory_consumption').insert({
           owner_id: ownerId, inventory_id: null, quantity_used: parseFloat(row.qty) || 0, date,
-          notes: `SPECIAL REQUEST: ${row.name.trim()} (${row.qty} ${row.unit})`,
+          notes: `SPECIAL REQUEST: ${row.name.trim()} (${row.qty} ${row.unit})`, created_at: now,
         } as any);
       }
       toast.success('Request submitted!');
-      setSubmitted(true); setRequests({}); setCustomRows([]);
+      setRequests({}); setCustomRows([]);
+      setShowRequestDialog(false);
+      // Show the submitted request detail
+      const submitted: InventoryRequest = {
+        id: now.slice(0, 16) + '_' + date,
+        date,
+        created_at: now,
+        status: 'pending',
+        items: [
+          ...activeRequests.map(([itemId, qty]) => ({
+            name: inventoryItems.find(i => i.id === itemId)?.name || itemId,
+            qty,
+            unit: inventoryItems.find(i => i.id === itemId)?.unit || 'pcs',
+            item_id: itemId,
+          })),
+          ...validCustom.map(r => ({ name: r.name.trim(), qty: parseFloat(r.qty) || 0, unit: r.unit })),
+        ],
+      };
+      setSelectedRequest(submitted);
+      setShowDetailDialog(true);
     } catch (err: any) { toast.error('Failed: ' + err.message); }
     finally { setSubmitting(false); }
   };
 
+  const handlePrintRequest = (req: InventoryRequest) => {
+    const w = window.open('', '_blank');
+    if (!w) { toast.error('Popup blocked'); return; }
+    w.document.write(`<!DOCTYPE html><html><head><title>Inventory Request — ${req.date}</title>
+      <style>*{margin:0;padding:0;box-sizing:border-box}body{font-family:system-ui,sans-serif;padding:24px;font-size:13px}
+      h1{font-size:18px;margin-bottom:4px}p.sub{color:#666;font-size:12px;margin-bottom:16px}
+      table{width:100%;border-collapse:collapse;margin-top:12px}th,td{border:1px solid #ddd;padding:8px 12px;text-align:left}
+      th{background:#f5f5f5;font-size:11px;text-transform:uppercase;letter-spacing:.5px}
+      .status{display:inline-block;padding:2px 10px;border-radius:20px;font-size:11px;font-weight:600;background:#fef3c7;color:#92400e}
+      .footer{margin-top:24px;font-size:11px;color:#999;border-top:1px solid #eee;padding-top:12px}
+      @media print{.no-print{display:none}}</style></head><body>
+      <div class="no-print" style="margin-bottom:16px">
+        <button onclick="window.print()" style="padding:8px 20px;cursor:pointer;border:1px solid #ddd;border-radius:6px">Print</button>
+      </div>
+      <h1>Inventory Request</h1>
+      <p class="sub">Date: ${req.date} &nbsp;|&nbsp; Submitted: ${new Date(req.created_at).toLocaleString()} &nbsp;|&nbsp; <span class="status">PENDING</span></p>
+      <table><thead><tr><th>#</th><th>Item</th><th>Qty</th><th>Unit</th></tr></thead><tbody>
+      ${req.items.map((item, i) => `<tr><td>${i + 1}</td><td>${item.name}</td><td>${item.qty}</td><td>${item.unit}</td></tr>`).join('')}
+      </tbody></table>
+      <div class="footer">Total items: ${req.items.length} &nbsp;|&nbsp; Generated by MessFlow Kitchen Portal</div>
+      </body></html>`);
+    w.document.close();
+  };
+
   if (inventoryLoading) return <div className="flex justify-center py-4"><Loader2 className="h-5 w-5 animate-spin text-primary" /></div>;
 
-  if (submitted) return (
-    <div className="text-center py-6 rounded-lg border border-border">
-      <CheckCircle className="h-8 w-8 mx-auto text-green-500 mb-2" />
-      <p className="text-sm font-medium mb-2">Request submitted!</p>
-      <Button variant="outline" size="sm" onClick={() => setSubmitted(false)}>New request</Button>
-    </div>
-  );
-
   return (
-    <div className="space-y-3">
-      {/* From stock */}
-      {inventoryItems.length > 0 && (
-        <div className="space-y-1.5">
-          <p className="text-xs font-medium text-muted-foreground">From Stock</p>
-          {inventoryItems.map((item) => (
-            <div key={item.id} className="flex items-center gap-2 py-1.5">
-              <div className="flex-1 min-w-0">
-                <p className="text-sm truncate">{item.name}</p>
-                <p className="text-[10px] text-muted-foreground">{item.available_qty} {item.unit}</p>
-              </div>
-              <Input type="number" min={0} placeholder="0"
-                className="w-16 h-8 text-sm text-center"
-                value={requests[item.id] || ''}
-                onChange={(e) => setRequests({ ...requests, [item.id]: parseFloat(e.target.value) || 0 })}
-              />
-            </div>
-          ))}
-        </div>
-      )}
-
-      {/* Custom items (bulk template) */}
-      <div className="border-t border-border pt-3">
-        <div className="flex items-center justify-between mb-2">
-          <p className="text-xs font-medium text-muted-foreground">Custom Items (not in stock)</p>
-          <Button variant="ghost" size="sm" className="h-6 text-xs" onClick={addCustomRow}>
-            <Plus className="h-3 w-3 mr-1" /> Add Row
-          </Button>
-        </div>
-        {customRows.length === 0 ? (
-          <Button variant="outline" size="sm" className="w-full h-8 text-xs" onClick={addCustomRow}>
-            <Plus className="h-3 w-3 mr-1" /> Request item not in inventory
-          </Button>
-        ) : (
-          <div className="space-y-2">
-            {customRows.map((row, i) => (
-              <div key={i} className="space-y-1">
-                <div className="flex gap-1.5 items-center">
-                  <Input placeholder="Item name" value={row.name}
-                    onChange={(e) => updateCustomRow(i, 'name', e.target.value)}
-                    className={`h-8 text-sm flex-1 ${isDuplicate(row.name) ? 'border-amber-500' : ''}`}
-                  />
-                  <Input type="number" placeholder="Qty" value={row.qty}
-                    onChange={(e) => updateCustomRow(i, 'qty', e.target.value)}
-                    className="w-16 h-8 text-sm text-center"
-                  />
-                  <select value={row.unit}
-                    onChange={(e) => updateCustomRow(i, 'unit', e.target.value)}
-                    className="h-8 text-xs rounded border border-border bg-background px-1"
-                  >
-                    {['kg','pcs','liters','grams','boxes','packets'].map(u => (
-                      <option key={u} value={u}>{u}</option>
-                    ))}
-                  </select>
-                  <Button variant="ghost" size="icon" className="h-8 w-8 flex-shrink-0" onClick={() => removeCustomRow(i)}>
-                    <Trash2 className="h-3 w-3" />
-                  </Button>
-                </div>
-                {isDuplicate(row.name) && (
-                  <p className="text-[10px] text-amber-500 pl-1">⚠ "{row.name.trim()}" exists in inventory — use stock request above</p>
-                )}
-              </div>
-            ))}
-          </div>
-        )}
+    <>
+      {/* Action Buttons — clean 2-button layout */}
+      <div className="grid grid-cols-2 gap-3">
+        <Button
+          onClick={() => setShowRequestDialog(true)}
+          className="h-11 font-semibold"
+        >
+          <Package className="h-4 w-4 mr-2" />
+          New Request
+        </Button>
+        <Button
+          variant="outline"
+          className="h-11 font-semibold"
+          onClick={() => { fetchHistory(); setShowHistoryDialog(true); }}
+        >
+          <Clock className="h-4 w-4 mr-2" />
+          Request History
+        </Button>
       </div>
 
-      <Button onClick={handleSubmit} className="w-full h-9 text-sm" disabled={submitting}>
-        {submitting ? <Loader2 className="h-4 w-4 animate-spin mr-1" /> : <Package className="h-4 w-4 mr-1" />}
-        Submit Request
-      </Button>
-    </div>
+      {/* New Request Dialog */}
+      <Dialog open={showRequestDialog} onOpenChange={setShowRequestDialog}>
+        <DialogContent className="max-w-md max-h-[85vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Package className="h-4 w-4 text-primary" />
+              Inventory Request — {date}
+            </DialogTitle>
+            <DialogDescription className="text-xs">
+              Select quantities from stock or add custom items
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-4">
+            {/* From stock */}
+            {inventoryItems.length > 0 && (
+              <div className="space-y-1">
+                <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">From Stock</p>
+                <div className="rounded-lg border border-border divide-y divide-border">
+                  {inventoryItems.map((item) => (
+                    <div key={item.id} className="flex items-center gap-3 px-3 py-2.5">
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm font-medium truncate">{item.name}</p>
+                        <p className="text-[10px] text-muted-foreground">{item.available_qty} {item.unit} available</p>
+                      </div>
+                      <div className="flex items-center gap-1.5">
+                        <Input type="number" min={0} placeholder="0"
+                          className="w-16 h-8 text-sm text-center"
+                          value={requests[item.id] || ''}
+                          onChange={(e) => setRequests({ ...requests, [item.id]: parseFloat(e.target.value) || 0 })}
+                        />
+                        <span className="text-xs text-muted-foreground w-8">{item.unit}</span>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* Custom items */}
+            <div className="space-y-2">
+              <div className="flex items-center justify-between">
+                <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Custom Items</p>
+                <Button variant="ghost" size="sm" className="h-7 text-xs" onClick={addCustomRow}>
+                  <Plus className="h-3 w-3 mr-1" /> Add
+                </Button>
+              </div>
+              {customRows.length === 0 ? (
+                <button
+                  onClick={addCustomRow}
+                  className="w-full h-9 rounded-lg border border-dashed border-border text-xs text-muted-foreground hover:border-primary hover:text-primary transition-colors flex items-center justify-center gap-1.5"
+                >
+                  <Plus className="h-3.5 w-3.5" /> Add item not in stock
+                </button>
+              ) : (
+                <div className="space-y-2">
+                  {customRows.map((row, i) => (
+                    <div key={i} className="p-3 rounded-lg border border-border space-y-2 bg-muted/20">
+                      <div className="flex items-center gap-2">
+                        <Input placeholder="Item name" value={row.name}
+                          onChange={(e) => updateCustomRow(i, 'name', e.target.value)}
+                          className={`h-8 text-sm flex-1 ${isDuplicate(row.name) ? 'border-amber-500' : ''}`}
+                        />
+                        <Button variant="ghost" size="icon" className="h-8 w-8 flex-shrink-0 text-muted-foreground hover:text-destructive" onClick={() => removeCustomRow(i)}>
+                          <Trash2 className="h-3.5 w-3.5" />
+                        </Button>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <Input type="number" placeholder="Qty" value={row.qty}
+                          onChange={(e) => updateCustomRow(i, 'qty', e.target.value)}
+                          className="w-24 h-8 text-sm"
+                        />
+                        <select value={row.unit}
+                          onChange={(e) => updateCustomRow(i, 'unit', e.target.value)}
+                          className="h-8 text-xs rounded-md border border-border bg-background px-2 flex-1"
+                        >
+                          {['kg','pcs','liters','grams','boxes','packets'].map(u => (
+                            <option key={u} value={u}>{u}</option>
+                          ))}
+                        </select>
+                      </div>
+                      {isDuplicate(row.name) && (
+                        <p className="text-[10px] text-amber-500">⚠ "{row.name.trim()}" exists in stock — use the stock section above</p>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            {totalItems > 0 && (
+              <div className="p-3 rounded-lg bg-primary/5 border border-primary/20 text-xs text-primary font-medium">
+                {totalItems} item{totalItems > 1 ? 's' : ''} ready to request
+              </div>
+            )}
+          </div>
+
+          <DialogFooter className="gap-2 pt-2">
+            <Button variant="outline" onClick={() => setShowRequestDialog(false)} className="flex-1">Cancel</Button>
+            <Button onClick={handleSubmit} className="flex-1" disabled={submitting || totalItems === 0}>
+              {submitting ? <Loader2 className="h-4 w-4 animate-spin mr-1.5" /> : <Package className="h-4 w-4 mr-1.5" />}
+              Submit Request
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Request Detail Dialog */}
+      <Dialog open={showDetailDialog} onOpenChange={setShowDetailDialog}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <CheckCircle className="h-4 w-4 text-green-500" />
+              Request Submitted
+            </DialogTitle>
+            <DialogDescription className="text-xs">
+              {selectedRequest?.date} · {selectedRequest && new Date(selectedRequest.created_at).toLocaleTimeString()}
+            </DialogDescription>
+          </DialogHeader>
+
+          {selectedRequest && (
+            <div className="space-y-3">
+              <div className="rounded-lg border border-border divide-y divide-border">
+                {selectedRequest.items.map((item, i) => (
+                  <div key={i} className="flex items-center justify-between px-3 py-2.5">
+                    <span className="text-sm font-medium">{item.name}</span>
+                    <span className="text-sm text-muted-foreground">{item.qty} {item.unit}</span>
+                  </div>
+                ))}
+              </div>
+              <div className="flex items-center justify-between">
+                <Badge variant="outline" className="border-amber-500 text-amber-600 bg-amber-50">
+                  Pending Approval
+                </Badge>
+                <span className="text-xs text-muted-foreground">{selectedRequest.items.length} items</span>
+              </div>
+            </div>
+          )}
+
+          <DialogFooter className="gap-2">
+            <Button variant="outline" onClick={() => setShowDetailDialog(false)} className="flex-1">Close</Button>
+            <Button
+              variant="outline"
+              className="flex-1"
+              onClick={() => selectedRequest && handlePrintRequest(selectedRequest)}
+            >
+              <Printer className="h-4 w-4 mr-1.5" /> Print
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* History Dialog */}
+      <Dialog open={showHistoryDialog} onOpenChange={setShowHistoryDialog}>
+        <DialogContent className="max-w-lg max-h-[85vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Clock className="h-4 w-4 text-primary" />
+              Request History
+            </DialogTitle>
+            <DialogDescription className="text-xs">All past inventory requests</DialogDescription>
+          </DialogHeader>
+
+          {historyLoading ? (
+            <div className="flex justify-center py-8"><Loader2 className="h-5 w-5 animate-spin text-primary" /></div>
+          ) : history.length === 0 ? (
+            <div className="text-center py-8 text-muted-foreground">
+              <Package className="h-10 w-10 mx-auto mb-2 opacity-30" />
+              <p className="text-sm">No requests yet</p>
+            </div>
+          ) : (
+            <div className="space-y-2">
+              {history.map((req) => (
+                <div
+                  key={req.id}
+                  className="rounded-lg border border-border p-3 cursor-pointer hover:bg-muted/40 transition-colors"
+                  onClick={() => { setSelectedRequest(req); setShowDetailDialog(true); }}
+                >
+                  <div className="flex items-center justify-between mb-1.5">
+                    <div className="flex items-center gap-2">
+                      <Calendar className="h-3.5 w-3.5 text-muted-foreground" />
+                      <span className="text-sm font-semibold">{req.date}</span>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <Badge variant="outline" className="text-[10px] border-amber-400 text-amber-600 bg-amber-50">
+                        Pending
+                      </Badge>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="h-7 w-7"
+                        onClick={(e) => { e.stopPropagation(); handlePrintRequest(req); }}
+                      >
+                        <Printer className="h-3.5 w-3.5" />
+                      </Button>
+                    </div>
+                  </div>
+                  <p className="text-xs text-muted-foreground">
+                    {req.items.length} item{req.items.length > 1 ? 's' : ''} · {new Date(req.created_at).toLocaleString()}
+                  </p>
+                  <div className="flex flex-wrap gap-1 mt-1.5">
+                    {req.items.slice(0, 3).map((item, i) => (
+                      <span key={i} className="text-[10px] bg-muted px-2 py-0.5 rounded-full">
+                        {item.name} ({item.qty} {item.unit})
+                      </span>
+                    ))}
+                    {req.items.length > 3 && (
+                      <span className="text-[10px] text-muted-foreground">+{req.items.length - 3} more</span>
+                    )}
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setShowHistoryDialog(false)} className="w-full">Close</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    </>
   );
 }

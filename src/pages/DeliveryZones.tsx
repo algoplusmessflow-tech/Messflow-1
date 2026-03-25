@@ -589,7 +589,7 @@ export default function DeliveryZones() {
             </Card>
           ) : (
             filteredZones.map((zone) => (
-              <Card key={zone.id} className="hover:shadow-md transition-shadow">
+              <Card key={zone.id} className="overflow-hidden hover:shadow-md transition-shadow">
                 <CardContent className="p-3 sm:p-4">
                   <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2 sm:gap-3">
                     <div className="flex items-start gap-2.5 flex-1 min-w-0 overflow-hidden">
@@ -624,35 +624,37 @@ export default function DeliveryZones() {
                         </div>
                       </div>
                     </div>
-                    <div className="flex flex-wrap items-center gap-1.5 flex-shrink-0">
+                    <div className="grid grid-cols-2 sm:flex sm:flex-wrap items-center gap-2 w-full sm:w-auto mt-2 sm:mt-0">
                       <Button
                         size="sm" variant={zone.driver_id ? "default" : "outline"}
-                        className="text-xs h-7"
+                        className="text-xs h-9 w-full sm:w-auto"
                         onClick={() => { setAssignDriverId(zone.id); setIsAssignDriverOpen(true); }}
                       >
-                        <Truck className="h-3 w-3 mr-1" />
-                        <span className="hidden sm:inline">{zone.driver ? zone.driver.name : "Assign"}</span>
-                        <span className="sm:hidden">{zone.driver ? zone.driver.name?.split(' ')[0] : "Assign"}</span>
+                        <Truck className="h-3.5 w-3.5 mr-1.5" />
+                        {zone.driver ? zone.driver.name?.split(' ')[0] : 'Assign Driver'}
                       </Button>
                       {zone.center_lat && zone.radius_km && (
                         <Button
                           size="sm" variant="outline"
-                          className="text-xs h-7"
+                          className="text-xs h-9 w-full sm:w-auto"
                           onClick={() => handleAutoAssign(zone)}
                           disabled={isAutoAssigning}
                         >
-                          {isAutoAssigning ? <Loader2 className="h-3 w-3 animate-spin" /> : <UserCheck className="h-3 w-3" />}
-                          <span className="hidden sm:inline ml-1">Auto-assign</span>
+                          {isAutoAssigning ? <Loader2 className="h-3.5 w-3.5 animate-spin mr-1.5" /> : <UserCheck className="h-3.5 w-3.5 mr-1.5" />}
+                          Auto-assign
                         </Button>
                       )}
-                      <Button size="icon" variant="ghost" className="h-8 w-8" onClick={() => openEdit(zone)}>
-                        <Pencil className="h-4 w-4" />
+                      <Button size="sm" variant="ghost" className="h-9 w-full sm:w-9 sm:p-0" onClick={() => openEdit(zone)}>
+                        <Pencil className="h-4 w-4 sm:mx-auto" />
+                        <span className="sm:hidden ml-1.5">Edit</span>
                       </Button>
-                      <Button size="icon" variant="ghost" className="h-8 w-8 text-destructive hover:text-destructive"
+                      <Button size="sm" variant="ghost"
+                        className="h-9 w-full sm:w-9 sm:p-0 text-destructive hover:text-destructive"
                         onClick={() => setDeleteId(zone.id)}
                         disabled={(zone.member_count || 0) > 0}
                         title={(zone.member_count || 0) > 0 ? 'Remove members first' : 'Delete zone'}>
-                        <Trash2 className="h-4 w-4" />
+                        <Trash2 className="h-4 w-4 sm:mx-auto" />
+                        <span className="sm:hidden ml-1.5">Delete</span>
                       </Button>
                     </div>
                   </div>
