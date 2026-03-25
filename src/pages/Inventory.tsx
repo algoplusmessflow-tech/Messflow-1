@@ -39,7 +39,7 @@ import { DailyConsumptionModal } from '@/components/DailyConsumptionModal';
 import { supabase } from '@/integrations/supabase/client';
 import { Badge } from '@/components/ui/badge';
 import { format } from 'date-fns';
-import { Plus, Minus, Trash2, Loader2, Package, Pencil, Upload, ArrowDown, ChefHat, Clock, CheckCircle } from 'lucide-react';
+import { Plus, Minus, Trash2, Loader2, Package, Pencil, Upload, ArrowDown, ChefHat, Clock, CheckCircle, Printer } from 'lucide-react';
 import { toast } from 'sonner';
 
 const UNITS = ['kg', 'pcs', 'liters', 'grams', 'boxes', 'packets'];
@@ -392,6 +392,30 @@ export default function Inventory() {
 }
 
 // ═══ KITCHEN REQUESTS COMPONENT ═══
+
+// Resolve display name for any request row
+function resolveItemName(req: any): string {
+  // Stock item — joined inventory record
+  if (req.inventory?.item_name) return req.inventory.item_name;
+  // Special request — parse "SPECIAL REQUEST: Tomatoes (2 kg)"
+  if (req.notes?.includes('SPECIAL REQUEST:')) {
+    return req.notes
+      .replace('SPECIAL REQUEST:', '')
+      .replace(/\s*\([^)]*\)\s*$/, '')  // strip trailing (qty unit)
+      .replace('[APPROVED]', '')
+      .trim();
+  }
+  // Kitchen request with no join — try to match by inventory_id from local list
+  return 'Unknown item';
+}
+
+function resolveUnit(req: any): string {
+  if (req.inventory?.unit) return req.inventory.unit;
+  // Parse unit from "SPECIAL REQUEST: Item (2 kg)"
+  const match = req.notes?.match(/\(([\d.]+)\s*(\w+)\)/);
+  return match?.[2] || 'pcs';
+}
+
 function KitchenRequests() {
   const { user } = useAuth();
   const queryClient = useQueryClient();
@@ -406,15 +430,14 @@ function KitchenRequests() {
         .select('*, inventory:inventory_id(item_name, unit)')
         .eq('owner_id', user.id)
         .order('created_at', { ascending: false })
-        .limit(50);
+        .limit(100);
       if (error) {
-        // Fallback without join
         const fallback = await supabase
           .from('inventory_consumption')
           .select('*')
           .eq('owner_id', user.id)
           .order('created_at', { ascending: false })
-          .limit(50);
+          .limit(100);
         return (fallback.data || []).map((r: any) => ({ ...r, inventory: null }));
       }
       return (data || []).map((r: any) => ({
@@ -426,51 +449,270 @@ function KitchenRequests() {
     staleTime: 15000,
   });
 
-  const kitchenRequests = requests.filter((r: any) => r.notes?.includes('Kitchen request') || r.notes?.includes('SPECIAL REQUEST'));
+  // Group pending rows into batches by (created_at minute + date)
+  type BatchedRequest = {
+    batchKey: string;
+    date: string;
+    created_at: string;
+    rows: any[];
+  };
 
-  if (kitchenRequests.length === 0) return null;
+  const pendingRows = requests.filter((r: any) =>
+    (r.notes?.includes('Kitchen request') || r.notes?.includes('SPECIAL REQUEST')) &&
+    !r.notes?.includes('[APPROVED]')
+  );
+
+  const approvedRows = requests.filter((r: any) => r.notes?.includes('[APPROVED]'));
+
+  const pendingBatches: BatchedRequest[] = Object.values(
+    pendingRows.reduce((acc: Record<string, BatchedRequest>, r: any) => {
+      const key = (r.created_at?.slice(0, 16) ?? '') + '_' + (r.date ?? '');
+      if (!acc[key]) acc[key] = { batchKey: key, date: r.date, created_at: r.created_at, rows: [] };
+      acc[key].rows.push(r);
+      return acc;
+    }, {})
+  ).sort((a, b) => b.created_at.localeCompare(a.created_at));
+
+  const approvedBatches: BatchedRequest[] = Object.values(
+    approvedRows.reduce((acc: Record<string, BatchedRequest>, r: any) => {
+      const key = (r.created_at?.slice(0, 16) ?? '') + '_' + (r.date ?? '');
+      if (!acc[key]) acc[key] = { batchKey: key, date: r.date, created_at: r.created_at, rows: [] };
+      acc[key].rows.push(r);
+      return acc;
+    }, {})
+  ).sort((a, b) => b.created_at.localeCompare(a.created_at)).slice(0, 20);
+
+  const [showHistory, setShowHistory] = useState(false);
+  const [selectedBatch, setSelectedBatch] = useState<BatchedRequest | null>(null);
+  // editable quantities per row id
+  const [editQty, setEditQty] = useState<Record<string, number>>({});
+  const [approving, setApproving] = useState(false);
+
+  const openBatch = (batch: BatchedRequest) => {
+    const init: Record<string, number> = {};
+    batch.rows.forEach(r => { init[r.id] = r.quantity_used ?? 0; });
+    setEditQty(init);
+    setSelectedBatch(batch);
+  };
+
+  const handleApproveBatch = async (batch: BatchedRequest) => {
+    setApproving(true);
+    try {
+      for (const r of batch.rows) {
+        const qty = editQty[r.id] ?? r.quantity_used ?? 0;
+        // Reduce stock if linked to inventory
+        if (r.inventory_id && qty > 0) {
+          const invItem = inventory.find(i => i.id === r.inventory_id);
+          if (invItem) {
+            const newQty = Math.max(0, Number(invItem.quantity) - qty);
+            await supabase.from('inventory').update({ quantity: newQty }).eq('id', r.inventory_id);
+          }
+        }
+        // Update qty if changed, mark approved
+        await supabase
+          .from('inventory_consumption')
+          .update({ quantity_used: qty, notes: r.notes + ' [APPROVED]' })
+          .eq('id', r.id);
+      }
+      queryClient.invalidateQueries({ queryKey: ['kitchen-requests'] });
+      queryClient.invalidateQueries({ queryKey: ['inventory'] });
+      toast.success(`${batch.rows.length} item(s) approved`);
+      setSelectedBatch(null);
+    } catch (err: any) {
+      toast.error('Failed: ' + err.message);
+    } finally {
+      setApproving(false);
+    }
+  };
+
+  const handlePrintBatch = (batch: BatchedRequest) => {
+    const w = window.open('', '_blank');
+    if (!w) return;
+    const rows = batch.rows.map((r, i) => {
+      const name = resolveItemName(r);
+      const unit = resolveUnit(r);
+      const qty = editQty[r.id] ?? r.quantity_used ?? 0;
+      const type = r.notes?.includes('SPECIAL REQUEST') ? 'Special' : 'Stock';
+      return `<tr><td>${i + 1}</td><td>${name}</td><td>${qty}</td><td>${unit}</td><td>${type}</td></tr>`;
+    }).join('');
+    w.document.write(`<!DOCTYPE html><html><head><title>Inventory Request — ${batch.date}</title>
+      <style>*{margin:0;padding:0;box-sizing:border-box}body{font-family:system-ui,sans-serif;padding:24px;font-size:13px}
+      h1{font-size:18px;margin-bottom:4px}p.sub{color:#666;font-size:12px;margin-bottom:16px}
+      table{width:100%;border-collapse:collapse;margin-top:12px}th,td{border:1px solid #ddd;padding:8px 12px;text-align:left}
+      th{background:#f5f5f5;font-size:11px;text-transform:uppercase;letter-spacing:.5px}
+      .footer{margin-top:24px;font-size:11px;color:#999;border-top:1px solid #eee;padding-top:12px}
+      @media print{.no-print{display:none}}</style></head><body>
+      <div class="no-print" style="margin-bottom:16px">
+        <button onclick="window.print()" style="padding:8px 20px;cursor:pointer;border:1px solid #ddd;border-radius:6px">Print</button>
+      </div>
+      <h1>Inventory Request</h1>
+      <p class="sub">Date: ${batch.date} &nbsp;|&nbsp; Submitted: ${new Date(batch.created_at).toLocaleString()}</p>
+      <table><thead><tr><th>#</th><th>Item</th><th>Qty</th><th>Unit</th><th>Type</th></tr></thead>
+      <tbody>${rows}</tbody></table>
+      <div class="footer">Total: ${batch.rows.length} items &nbsp;|&nbsp; MessFlow</div>
+      </body></html>`);
+    w.document.close();
+  };
+
+  if (pendingBatches.length === 0 && approvedBatches.length === 0) return null;
 
   return (
-    <Card>
-      <CardContent className="p-4">
-        <div className="flex items-center justify-between mb-3">
-          <h3 className="text-sm font-semibold flex items-center gap-2">
-            <ChefHat className="h-4 w-4 text-primary" />
-            Kitchen Requests
-            <Badge variant="secondary" className="text-[10px]">{kitchenRequests.length}</Badge>
-          </h3>
-        </div>
-        <div className="space-y-2">
-          {kitchenRequests.map((req: any) => {
-            const isSpecial = req.notes?.includes('SPECIAL REQUEST');
-            const itemName = req.inventory?.item_name || (isSpecial ? req.notes?.replace('SPECIAL REQUEST: ', '') : 'Unknown item');
-            return (
-              <div key={req.id} className="flex items-center justify-between py-2 border-b border-border last:border-0">
-                <div className="flex-1 min-w-0">
-                  <p className="text-sm font-medium truncate">{itemName}</p>
-                  <div className="flex items-center gap-2 text-xs text-muted-foreground">
-                    <Clock className="h-3 w-3" />
-                    {req.date || format(new Date(req.created_at), 'dd MMM')}
-                    {req.quantity_used > 0 && <span>· Qty: {req.quantity_used}</span>}
-                    {isSpecial && <Badge variant="outline" className="text-[9px] h-4">Special</Badge>}
+    <>
+      <Card>
+        <CardContent className="p-4">
+          <div className="flex items-center justify-between mb-3">
+            <h3 className="text-sm font-semibold flex items-center gap-2">
+              <ChefHat className="h-4 w-4 text-primary" />
+              Kitchen Requests
+              {pendingBatches.length > 0 && (
+                <Badge variant="secondary" className="text-[10px]">{pendingBatches.length} pending</Badge>
+              )}
+            </h3>
+            {approvedBatches.length > 0 && (
+              <Button variant="ghost" size="sm" className="h-7 text-xs" onClick={() => setShowHistory(!showHistory)}>
+                <Clock className="h-3 w-3 mr-1" />{showHistory ? 'Hide' : 'History'}
+              </Button>
+            )}
+          </div>
+
+          {isLoading ? (
+            <div className="space-y-2">{[1,2].map(i => <Skeleton key={i} className="h-12 w-full" />)}</div>
+          ) : pendingBatches.length === 0 ? (
+            <p className="text-xs text-muted-foreground text-center py-4">No pending requests</p>
+          ) : (
+            <div className="space-y-2">
+              {pendingBatches.map((batch) => (
+                <div
+                  key={batch.batchKey}
+                  className="flex items-center justify-between p-3 rounded-lg border border-border hover:bg-muted/30 cursor-pointer transition-colors"
+                  onClick={() => openBatch(batch)}
+                >
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm font-medium">
+                      {batch.rows.length} item{batch.rows.length > 1 ? 's' : ''} requested
+                    </p>
+                    <p className="text-xs text-muted-foreground">
+                      {batch.date} · {new Date(batch.created_at).toLocaleTimeString()}
+                    </p>
+                    <div className="flex flex-wrap gap-1 mt-1">
+                      {batch.rows.slice(0, 3).map((r, i) => (
+                        <span key={i} className="text-[10px] bg-muted px-1.5 py-0.5 rounded-full">
+                          {resolveItemName(r)}
+                        </span>
+                      ))}
+                      {batch.rows.length > 3 && (
+                        <span className="text-[10px] text-muted-foreground">+{batch.rows.length - 3} more</span>
+                      )}
+                    </div>
+                  </div>
+                  <Badge variant="outline" className="border-amber-400 text-amber-600 text-[10px] ml-2 flex-shrink-0">
+                    Pending
+                  </Badge>
+                </div>
+              ))}
+            </div>
+          )}
+
+          {/* Approved History */}
+          {showHistory && approvedBatches.length > 0 && (
+            <div className="mt-4 pt-3 border-t border-border space-y-1">
+              <p className="text-xs font-medium text-muted-foreground mb-2">Approved History</p>
+              {approvedBatches.map((batch) => (
+                <div
+                  key={batch.batchKey}
+                  className="flex items-center justify-between py-1.5 text-xs text-muted-foreground cursor-pointer hover:text-foreground"
+                  onClick={() => openBatch(batch)}
+                >
+                  <span>{batch.rows.length} items · {batch.date}</span>
+                  <div className="flex items-center gap-1">
+                    <Badge variant="outline" className="text-[9px] border-green-500 text-green-600">Approved</Badge>
+                    <Button variant="ghost" size="icon" className="h-6 w-6" onClick={(e) => { e.stopPropagation(); handlePrintBatch(batch); }}>
+                      <Printer className="h-3 w-3" />
+                    </Button>
                   </div>
                 </div>
-                <Button
-                  size="sm" variant="outline" className="text-xs h-7"
-                  onClick={async () => {
-                    // Mark as fulfilled by deleting or updating
-                    await supabase.from('inventory_consumption').delete().eq('id', req.id);
-                    queryClient.invalidateQueries({ queryKey: ['kitchen-requests'] });
-                    toast.success('Request fulfilled');
-                  }}
-                >
-                  <CheckCircle className="h-3 w-3 mr-1" /> Done
-                </Button>
+              ))}
+            </div>
+          )}
+        </CardContent>
+      </Card>
+
+      {/* Request Detail Dialog */}
+      <Dialog open={!!selectedBatch} onOpenChange={(open) => !open && setSelectedBatch(null)}>
+        <DialogContent className="max-w-md max-h-[85vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Package className="h-4 w-4 text-primary" />
+              Request — {selectedBatch?.date}
+            </DialogTitle>
+          </DialogHeader>
+
+          {selectedBatch && (
+            <div className="space-y-3">
+              <p className="text-xs text-muted-foreground">
+                Submitted: {new Date(selectedBatch.created_at).toLocaleString()}
+              </p>
+
+              <div className="rounded-lg border border-border divide-y divide-border">
+                {selectedBatch.rows.map((r) => {
+                  const name = resolveItemName(r);
+                  const unit = resolveUnit(r);
+                  const isApproved = r.notes?.includes('[APPROVED]');
+                  return (
+                    <div key={r.id} className="flex items-center gap-3 px-3 py-2.5">
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm font-medium truncate">{name}</p>
+                        <p className="text-[10px] text-muted-foreground">{unit}</p>
+                      </div>
+                      {isApproved ? (
+                        <span className="text-sm text-muted-foreground">{editQty[r.id] ?? r.quantity_used} {unit}</span>
+                      ) : (
+                        <div className="flex items-center gap-1.5">
+                          <Input
+                            type="number"
+                            min={0}
+                            step="0.1"
+                            className="w-20 h-8 text-sm text-center"
+                            value={editQty[r.id] ?? r.quantity_used ?? 0}
+                            onChange={(e) => setEditQty({ ...editQty, [r.id]: parseFloat(e.target.value) || 0 })}
+                          />
+                          <span className="text-xs text-muted-foreground w-8">{unit}</span>
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
               </div>
-            );
-          })}
-        </div>
-      </CardContent>
-    </Card>
+
+              {selectedBatch.rows[0]?.notes?.includes('[APPROVED]') && (
+                <Badge variant="outline" className="border-green-500 text-green-600 w-full justify-center py-1">
+                  <CheckCircle className="h-3.5 w-3.5 mr-1.5" /> Approved
+                </Badge>
+              )}
+            </div>
+          )}
+
+          <DialogFooter className="gap-2 pt-2">
+            <Button
+              variant="outline"
+              className="flex-1"
+              onClick={() => selectedBatch && handlePrintBatch(selectedBatch)}
+            >
+              <Printer className="h-4 w-4 mr-1.5" /> Print
+            </Button>
+            {selectedBatch && !selectedBatch.rows[0]?.notes?.includes('[APPROVED]') && (
+              <Button
+                className="flex-1"
+                onClick={() => selectedBatch && handleApproveBatch(selectedBatch)}
+                disabled={approving}
+              >
+                {approving ? <Loader2 className="h-4 w-4 animate-spin mr-1.5" /> : <CheckCircle className="h-4 w-4 mr-1.5" />}
+                Approve All
+              </Button>
+            )}
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    </>
   );
 }
