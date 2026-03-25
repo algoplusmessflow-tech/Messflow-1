@@ -393,25 +393,32 @@ export default function Inventory() {
 
 // ═══ KITCHEN REQUESTS COMPONENT ═══
 
-// Resolve display name for any request row
-function resolveItemName(req: any): string {
-  // Stock item — joined inventory record
+// Resolve display name — accepts optional local inventory list for fallback lookup
+function resolveItemName(req: any, inventoryList?: any[]): string {
+  // 1. Joined inventory record (best case)
   if (req.inventory?.item_name) return req.inventory.item_name;
-  // Special request — parse "SPECIAL REQUEST: Tomatoes (2 kg)"
+  // 2. Local inventory list lookup by inventory_id
+  if (req.inventory_id && inventoryList?.length) {
+    const found = inventoryList.find((i: any) => i.id === req.inventory_id);
+    if (found) return found.item_name || found.name;
+  }
+  // 3. Special request — parse "SPECIAL REQUEST: Tomatoes (2 kg)"
   if (req.notes?.includes('SPECIAL REQUEST:')) {
     return req.notes
       .replace('SPECIAL REQUEST:', '')
-      .replace(/\s*\([^)]*\)\s*$/, '')  // strip trailing (qty unit)
+      .replace(/\s*\([^)]*\)\s*$/, '')
       .replace('[APPROVED]', '')
       .trim();
   }
-  // Kitchen request with no join — try to match by inventory_id from local list
   return 'Unknown item';
 }
 
-function resolveUnit(req: any): string {
+function resolveUnit(req: any, inventoryList?: any[]): string {
   if (req.inventory?.unit) return req.inventory.unit;
-  // Parse unit from "SPECIAL REQUEST: Item (2 kg)"
+  if (req.inventory_id && inventoryList?.length) {
+    const found = inventoryList.find((i: any) => i.id === req.inventory_id);
+    if (found) return found.unit || 'pcs';
+  }
   const match = req.notes?.match(/\(([\d.]+)\s*(\w+)\)/);
   return match?.[2] || 'pcs';
 }
@@ -529,8 +536,8 @@ function KitchenRequests() {
     const w = window.open('', '_blank');
     if (!w) return;
     const rows = batch.rows.map((r, i) => {
-      const name = resolveItemName(r);
-      const unit = resolveUnit(r);
+      const name = resolveItemName(r, inventory);
+      const unit = resolveUnit(r, inventory);
       const qty = editQty[r.id] ?? r.quantity_used ?? 0;
       const type = r.notes?.includes('SPECIAL REQUEST') ? 'Special' : 'Stock';
       return `<tr><td>${i + 1}</td><td>${name}</td><td>${qty}</td><td>${unit}</td><td>${type}</td></tr>`;
@@ -597,7 +604,7 @@ function KitchenRequests() {
                     <div className="flex flex-wrap gap-1 mt-1">
                       {batch.rows.slice(0, 3).map((r, i) => (
                         <span key={i} className="text-[10px] bg-muted px-1.5 py-0.5 rounded-full">
-                          {resolveItemName(r)}
+                          {resolveItemName(r, inventory)}
                         </span>
                       ))}
                       {batch.rows.length > 3 && (
@@ -655,8 +662,8 @@ function KitchenRequests() {
 
               <div className="rounded-lg border border-border divide-y divide-border">
                 {selectedBatch.rows.map((r) => {
-                  const name = resolveItemName(r);
-                  const unit = resolveUnit(r);
+                  const name = resolveItemName(r, inventory);
+                  const unit = resolveUnit(r, inventory);
                   const isApproved = r.notes?.includes('[APPROVED]');
                   return (
                     <div key={r.id} className="flex items-center gap-3 px-3 py-2.5">

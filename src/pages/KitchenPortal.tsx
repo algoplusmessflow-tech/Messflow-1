@@ -511,40 +511,6 @@ export default function KitchenPortal() {
           </CardContent></Card>
         </div>
 
-        {/* Actions */}
-        <Card className="border border-border bg-card shadow-sm">
-          <CardContent className="p-4 space-y-4">
-            <div className="flex items-center justify-between pb-3 border-b-2 border-border">
-              <h3 className="text-sm font-bold text-foreground flex items-center gap-2">
-                <Printer className="h-4 w-4 text-primary" />
-                Print Labels
-              </h3>
-              <Badge variant="outline" className="text-xs font-bold border-primary/30 text-primary bg-primary/5">
-                {members.length} labels ready
-              </Badge>
-            </div>
-
-            {/* Action Buttons */}
-            <div className="flex flex-col sm:flex-row gap-3">
-              <Button 
-                onClick={handlePrintLabels} 
-                className="flex-1 h-12 text-base font-bold bg-primary hover:bg-primary/90 shadow-sm border-0"
-              >
-                <Printer className="h-5 w-5 mr-2" /> 
-                Print Labels
-              </Button>
-              <Button 
-                onClick={handleDownloadPDF} 
-                variant="outline" 
-                className="flex-1 h-12 text-base font-bold border-2 border-primary/30 hover:bg-primary/5 shadow-md"
-              >
-                <Download className="h-5 w-5 mr-2" /> 
-                Download Prep Sheet
-              </Button>
-            </div>
-          </CardContent>
-        </Card>
-
 
         {/* Today's Prep Overview — NO customer names, zone-wise + special notes */}
         {membersLoading ? (
@@ -631,14 +597,14 @@ export default function KitchenPortal() {
               </CardTitle>
               <div className="flex items-center gap-2">
                 {lastUpdated && (
-                  <p className="text-[10px] text-muted-foreground font-medium">
-                    Updated: {format(lastUpdated, 'HH:mm:ss')}
+                  <p className="text-[10px] text-muted-foreground font-medium hidden sm:block">
+                    {format(lastUpdated, 'HH:mm:ss')}
                   </p>
                 )}
                 <Button
                   variant="ghost"
                   size="icon"
-                  className="h-8 w-8 hover:bg-primary/10"
+                  className="h-7 w-7 hover:bg-primary/10"
                   onClick={() => {
                     setInventoryLoading(true);
                     supabase
@@ -660,18 +626,27 @@ export default function KitchenPortal() {
                   }}
                   disabled={inventoryLoading}
                 >
-                  <RefreshCw className={`h-4 w-4 ${inventoryLoading ? 'animate-spin' : ''}`} />
+                  <RefreshCw className={`h-3.5 w-3.5 ${inventoryLoading ? 'animate-spin' : ''}`} />
                 </Button>
               </div>
             </div>
           </CardHeader>
-          <CardContent>
-            <InventoryRequestForm 
-              ownerId={ownerId} 
-              date={format(selectedDate, 'yyyy-MM-dd')} 
-              inventoryItems={inventoryItems}
-              inventoryLoading={inventoryLoading}
-            />
+          <CardContent className="pt-0">
+            {/* All 3 actions in one compact row */}
+            <div className="flex items-center gap-1.5 mb-3">
+              <Button onClick={handlePrintLabels} size="sm" className="h-8 text-xs font-semibold px-3">
+                <Printer className="h-3.5 w-3.5 mr-1.5" />Labels
+              </Button>
+              <Button onClick={handleDownloadPDF} variant="outline" size="sm" className="h-8 text-xs font-semibold px-3">
+                <Download className="h-3.5 w-3.5 mr-1.5" />Prep Sheet
+              </Button>
+              <InventoryRequestForm 
+                ownerId={ownerId} 
+                date={format(selectedDate, 'yyyy-MM-dd')} 
+                inventoryItems={inventoryItems}
+                inventoryLoading={inventoryLoading}
+              />
+            </div>
           </CardContent>
         </Card>
       </main>
@@ -896,24 +871,15 @@ function InventoryRequestForm({
 
   return (
     <>
-      {/* Action Buttons — clean 2-button layout */}
-      <div className="grid grid-cols-2 gap-3">
-        <Button
-          onClick={() => setShowRequestDialog(true)}
-          className="h-11 font-semibold"
-        >
-          <Package className="h-4 w-4 mr-2" />
-          New Request
-        </Button>
-        <Button
-          variant="outline"
-          className="h-11 font-semibold"
-          onClick={() => { fetchHistory(); setShowHistoryDialog(true); }}
-        >
-          <Clock className="h-4 w-4 mr-2" />
-          Request History
-        </Button>
-      </div>
+      {/* Single compact action row: New Request only (History moved to Inventory tab) */}
+      <Button
+        onClick={() => setShowRequestDialog(true)}
+        size="sm"
+        className="h-8 text-xs font-semibold px-3"
+      >
+        <Package className="h-3.5 w-3.5 mr-1.5" />
+        New Request
+      </Button>
 
       {/* New Request Dialog */}
       <Dialog open={showRequestDialog} onOpenChange={setShowRequestDialog}>
