@@ -49,7 +49,7 @@ import { formatCurrency, formatDate, toDateInputValue, calculateExpiryDate, getD
 import { generateMemberInvoice } from '@/lib/pdf-generator';
 import { shareInvoiceViaWhatsApp, createInvoicePDF } from '@/lib/whatsapp-pdf-share';
 import { generatePortalCredentials } from '@/lib/credentials';
-import { Plus, Phone, Loader2, CreditCard, AlertTriangle, FileText, MessageCircle, Trash2, Search, Filter, X, Calendar as CalendarIcon, RefreshCw, History, Send, Crown, Upload, Share2, Pencil, UserPlus, MapPin, UtensilsCrossed, Pause, SkipForward, KeyRound, Copy, Eye, EyeOff } from 'lucide-react';
+import { Plus, Phone, Loader2, CreditCard, AlertTriangle, FileText, MessageCircle, Trash2, Search, Filter, X, Calendar as CalendarIcon, RefreshCw, History, Send, Crown, Upload, Share2, Pencil, UserPlus, MapPin, UtensilsCrossed, Pause, SkipForward, KeyRound, Copy, Eye, EyeOff, Gift } from 'lucide-react';
 import { toast } from 'sonner';
 import type { Database } from '@/integrations/supabase/types';
 import { UpgradePlanModal } from '@/components/UpgradePlanModal';
@@ -131,6 +131,7 @@ export default function Members() {
     trial_days: 3,
     location_lat: null as number | null,
     location_lng: null as number | null,
+    referred_by_member_id: '' as string,
   });
   const [paymentAmount, setPaymentAmount] = useState('');
   const [paymentDate, setPaymentDate] = useState<Date | null>(new Date());
@@ -304,11 +305,55 @@ export default function Members() {
       skip_weekends: formData.skip_weekends,
       free_trial: formData.free_trial,
       trial_days: formData.free_trial ? formData.trial_days : null,
+      referred_by_member_id: formData.referred_by_member_id || null,
       location_lat: formData.location_lat,
       location_lng: formData.location_lng,
       portal_username: creds.username,
       portal_password: creds.password,
     } as any);
+
+    // Auto-generate referral code for the new member
+    if (newMember && user) {
+      const nameCode = formData.name.trim().toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 6);
+      const randomSuffix = Math.random().toString(36).substring(2, 5).toUpperCase();
+      const refCode = nameCode + randomSuffix;
+      try {
+        await supabase.from('referral_codes').insert({
+          owner_id: user.id,
+          member_id: newMember.id,
+          code: refCode,
+          discount_percent: 5,
+          max_uses: 50,
+          reward_per_referral: 50,
+        } as any);
+      } catch (e) { console.warn('Auto referral code failed:', e); }
+
+      // Track referral use if this member was referred
+      if (formData.referred_by_member_id) {
+        try {
+          // Find referrer's code
+          const { data: referrerCode } = await supabase
+            .from('referral_codes')
+            .select('id')
+            .eq('member_id', formData.referred_by_member_id)
+            .eq('owner_id', user.id)
+            .maybeSingle();
+          if (referrerCode) {
+            await supabase.from('referral_uses').insert({
+              owner_id: user.id,
+              referral_code_id: referrerCode.id,
+              referrer_member_id: formData.referred_by_member_id,
+              referred_member_id: newMember.id,
+              reward_amount: 50,
+              reward_status: 'pending',
+              payment_confirmed: formData.isPaid,
+            } as any);
+            // Increment uses_count
+            await supabase.from('referral_codes').update({ uses_count: (referrerCode as any).uses_count + 1 } as any).eq('id', referrerCode.id);
+          }
+        } catch (e) { console.warn('Referral tracking failed:', e); }
+      }
+    }
 
     if ((formData.isPaid || formData.free_trial) && newMember) {
       await addTransaction.mutateAsync({
@@ -1079,6 +1124,31 @@ Thank you for your prompt attention! \u{1F64F}`;
                         </SelectContent>
                       </Select>
                     </div>
+                  </div>
+
+                  {/* Referred By — Smart Reminder */}
+                  <div className="space-y-2">
+                    <div className="p-2.5 rounded-lg bg-primary/5 border border-primary/20">
+                      <p className="text-xs text-primary font-medium flex items-center gap-1.5">
+                        <Gift className="h-3.5 w-3.5" />
+                        Ask: "Were you referred by someone?"
+                      </p>
+                    </div>
+                    <Label>Referred By (optional)</Label>
+                    <Select
+                      value={formData.referred_by_member_id}
+                      onValueChange={(v) => setFormData({ ...formData, referred_by_member_id: v })}
+                    >
+                      <SelectTrigger>
+                        <SelectValue placeholder="Select referrer..." />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="">No referral</SelectItem>
+                        {members.filter(m => m.status === 'active').map(m => (
+                          <SelectItem key={m.id} value={m.id}>{m.name} — {m.phone}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
                   </div>
 
                   {/* Special Notes */}
