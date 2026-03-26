@@ -521,6 +521,7 @@ function KitchenRequests() {
 
   const handleApproveBatch = async (batch: BatchedRequest) => {
     setApproving(true);
+    let errors: string[] = [];
     try {
       for (const r of batch.rows) {
         const qty = editQty[r.id] ?? r.quantity_used ?? 0;
@@ -530,24 +531,30 @@ function KitchenRequests() {
           if (invItem) {
             const newQty = Math.max(0, Number(invItem.quantity) - qty);
             const { error: updateErr } = await supabase.from('inventory').update({ quantity: newQty }).eq('id', r.inventory_id);
-            if (updateErr) console.warn('Stock update error:', updateErr.message);
+            if (updateErr) errors.push(`Stock: ${updateErr.message}`);
           }
         }
         // Mark as approved — strip any existing [APPROVED] first to avoid duplication
-        const baseNotes = (r.notes ?? '').replace(/\s*\[APPROVED\]/g, '').trim();
+        const baseNotes = (r.notes ?? '').replace(/\s*\[APPROVED\]/g, '').replace(/\s*\[DELIVERED\]/g, '').trim();
         const { error: noteErr } = await supabase
           .from('inventory_consumption')
           .update({ quantity_used: qty, notes: baseNotes + ' [APPROVED]' })
           .eq('id', r.id);
-        if (noteErr) console.warn('Approval note error:', noteErr.message);
+        if (noteErr) errors.push(`Approve: ${noteErr.message}`);
       }
-      // Close dialog first, then force fresh data
+
+      if (errors.length > 0) {
+        toast.error(`Approval had issues: ${errors.join('; ')}`);
+      } else {
+        toast.success(`${batch.rows.length} item(s) approved — stock updated`);
+      }
+
+      // Close dialog and force fresh data
       setSelectedBatch(null);
       setEditQty({});
-      toast.success(`${batch.rows.length} item(s) approved — stock updated`);
-      // Force refetch with exact key match — await to ensure data is fresh before UI updates
-      await queryClient.invalidateQueries({ queryKey: ['kitchen-requests', user?.id] });
-      await queryClient.invalidateQueries({ queryKey: ['inventory', user?.id] });
+      // Refetch: invalidate AND refetch to guarantee fresh data
+      await queryClient.refetchQueries({ queryKey: ['kitchen-requests', user?.id] });
+      await queryClient.refetchQueries({ queryKey: ['inventory', user?.id] });
     } catch (err: any) {
       toast.error('Failed: ' + err.message);
     } finally {
@@ -648,7 +655,7 @@ function KitchenRequests() {
                       )}
                     </div>
                   </div>
-                  <Badge variant="outline" className="border-amber-400 text-amber-600 text-[10px] ml-2 flex-shrink-0">
+                  <Badge variant="outline" className="border-amber-500 text-amber-500 bg-amber-500/10 text-[10px] ml-2 flex-shrink-0">
                     Pending
                   </Badge>
                 </div>

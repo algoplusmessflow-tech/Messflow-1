@@ -530,7 +530,7 @@ export default function CustomerPortal() {
           </Button>
           <Button 
             variant="outline" 
-            className="h-12 border-border hover:bg-green-50 hover:border-green-200 hover:text-green-700"
+            className="h-12 border-border hover:bg-green-500/10 hover:border-green-500/30 hover:text-green-700"
           >
             <Play className="h-4 w-4 mr-2" />
             Resume Meals

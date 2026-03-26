@@ -796,7 +796,7 @@ export default function SuperAdmin() {
                     </CardHeader>
                     <CardContent className="space-y-3">
                       {[
-                        { label: 'Free', count: analytics.freePlanCount, color: 'bg-gray-400', pct: (analytics.freePlanCount / analytics.totalTenants * 100) },
+                        { label: 'Free', count: analytics.freePlanCount, color: 'bg-muted-foreground', pct: (analytics.freePlanCount / analytics.totalTenants * 100) },
                         { label: 'Pro', count: analytics.proPlanCount, color: 'bg-blue-500', pct: (analytics.proPlanCount / analytics.totalTenants * 100) },
                         { label: 'Enterprise', count: analytics.enterprisePlanCount, color: 'bg-purple-500', pct: (analytics.enterprisePlanCount / analytics.totalTenants * 100) },
                       ].map(plan => (
@@ -2010,11 +2010,11 @@ export default function SuperAdmin() {
                   <p className="text-xs font-medium text-muted-foreground mb-2">Service Status</p>
                   <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
                     <div className="flex items-center gap-1.5 text-xs">
-                      <div className={`h-2 w-2 rounded-full ${apiConfig.google_client_id ? 'bg-green-500' : 'bg-gray-300'}`} />
+                      <div className={`h-2 w-2 rounded-full ${apiConfig.google_client_id ? 'bg-green-500' : 'bg-muted'}`} />
                       Google Drive
                     </div>
                     <div className="flex items-center gap-1.5 text-xs">
-                      <div className={`h-2 w-2 rounded-full ${apiConfig.google_maps_key ? 'bg-green-500' : 'bg-gray-300'}`} />
+                      <div className={`h-2 w-2 rounded-full ${apiConfig.google_maps_key ? 'bg-green-500' : 'bg-muted'}`} />
                       Google Maps
                     </div>
                     <div className="flex items-center gap-1.5 text-xs">
@@ -2022,7 +2022,7 @@ export default function SuperAdmin() {
                       Cloudinary {!apiConfig.cloudinary_cloud_name && '(.env)'}
                     </div>
                     <div className="flex items-center gap-1.5 text-xs">
-                      <div className={`h-2 w-2 rounded-full ${apiConfig.whatsapp_api_token ? 'bg-green-500' : 'bg-gray-300'}`} />
+                      <div className={`h-2 w-2 rounded-full ${apiConfig.whatsapp_api_token ? 'bg-green-500' : 'bg-muted'}`} />
                       WhatsApp
                     </div>
                   </div>

@@ -262,7 +262,7 @@ export default function Dashboard() {
         {expiringMembers.length > 0 && (
           <Card id="expiring-section" className="backdrop-blur-xl border-amber-300/30 bg-card/80 hover:shadow-lg hover:shadow-glass transition-all duration-300">
             <CardHeader className="pb-2">
-              <CardTitle className="text-lg flex items-center gap-2 text-amber-600 font-semibold">
+              <CardTitle className="text-lg flex items-center gap-2 text-amber-500 font-semibold">
                 <AlertTriangle className="h-5 w-5" />
                 Expiring Soon ({expiringMembers.length})
               </CardTitle>
@@ -282,14 +282,14 @@ export default function Dashboard() {
                           Expires: {formatDate(new Date(member.plan_expiry_date!))}
                         </p>
                       </div>
-                      <Badge variant="outline" className="border-amber-500/50 text-amber-600 bg-amber-500/10 font-semibold">
+                      <Badge variant="outline" className="border-amber-500/50 text-amber-500 bg-amber-500/10 font-semibold">
                         {days === 0 ? 'Today' : `${days} days`}
                       </Badge>
                     </div>
                   );
                 })}
                 {expiringMembers.length > 5 && (
-                  <Link to="/members" className="text-sm text-amber-600 hover:text-amber-500 font-medium block text-center py-2">
+                  <Link to="/members" className="text-sm text-amber-500 hover:text-amber-500 font-medium block text-center py-2">
                     View all {expiringMembers.length} expiring members
                   </Link>
                 )}

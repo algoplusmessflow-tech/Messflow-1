@@ -531,7 +531,7 @@ export default function KitchenPortal() {
             <p className="text-[10px] text-muted-foreground">Total Meals</p>
           </CardContent></Card>
           <Card className="border-0 shadow-sm"><CardContent className="p-3 text-center">
-            <p className="text-xl font-bold text-amber-600">{summary.lunch}</p>
+            <p className="text-xl font-bold text-amber-500">{summary.lunch}</p>
             <p className="text-[10px] text-muted-foreground">Lunch</p>
           </CardContent></Card>
           <Card className="border-0 shadow-sm"><CardContent className="p-3 text-center">
@@ -654,7 +654,7 @@ export default function KitchenPortal() {
                   const allApproved = rows.every(r => r.notes?.includes('[APPROVED]'));
                   return (
                     <div key={key} className={`rounded-lg border p-3 ${
-                      allApproved ? 'border-green-500/40 bg-green-500/5' : 'border-amber-400/40 bg-amber-50/30'
+                      allApproved ? 'border-green-500/40 bg-green-500/100/5' : 'border-amber-400/40 bg-amber-500/10/30'
                     }`}>
                       <div className="flex items-center justify-between mb-1.5">
                         <span className="text-xs text-muted-foreground">
@@ -664,8 +664,8 @@ export default function KitchenPortal() {
                           variant="outline"
                           className={`text-[10px] font-semibold ${
                             allApproved
-                              ? 'border-green-500 text-green-600 bg-green-50'
-                              : 'border-amber-400 text-amber-600 bg-amber-50'
+                              ? 'border-green-500 text-green-600 bg-green-500/10'
+                              : 'border-amber-400 text-amber-500 bg-amber-500/10'
                           }`}
                         >
                           {allApproved ? (
@@ -1100,7 +1100,7 @@ function InventoryRequestForm({
                 ))}
               </div>
               <div className="flex items-center justify-between">
-                <Badge variant="outline" className="border-amber-500 text-amber-600 bg-amber-50">
+                <Badge variant="outline" className="border-amber-500 text-amber-500 bg-amber-500/10">
                   Pending Approval
                 </Badge>
                 <span className="text-xs text-muted-foreground">{selectedRequest.items.length} items</span>
@@ -1153,7 +1153,7 @@ function InventoryRequestForm({
                       <span className="text-sm font-semibold">{req.date}</span>
                     </div>
                     <div className="flex items-center gap-2">
-                      <Badge variant="outline" className="text-[10px] border-amber-400 text-amber-600 bg-amber-50">
+                      <Badge variant="outline" className="text-[10px] border-amber-400 text-amber-500 bg-amber-500/10">
                         Pending
                       </Badge>
                       <Button

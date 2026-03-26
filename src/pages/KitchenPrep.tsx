@@ -102,8 +102,8 @@ export default function KitchenPrep() {
 
   const getMealTypeBadge = (type: string) => {
     switch (type) {
-      case 'lunch': return <Badge variant="outline" className="bg-amber-50 text-amber-700 border-amber-200">Lunch</Badge>;
-      case 'dinner': return <Badge variant="outline" className="bg-purple-50 text-purple-700 border-purple-200">Dinner</Badge>;
+      case 'lunch': return <Badge variant="outline" className="bg-amber-500/10 text-amber-700 border-amber-200">Lunch</Badge>;
+      case 'dinner': return <Badge variant="outline" className="bg-violet-500/10 text-purple-700 border-purple-200">Dinner</Badge>;
       case 'both': return <Badge className="bg-blue-500">Both</Badge>;
       default: return <Badge variant="outline">{type}</Badge>;
     }
@@ -111,8 +111,8 @@ export default function KitchenPrep() {
 
   const getDietBadge = (diet: string) => {
     switch (diet) {
-      case 'veg': return <Badge variant="outline" className="bg-green-50 text-green-700 border-green-200"><Leaf className="h-3 w-3 mr-1" />Veg</Badge>;
-      case 'non_veg': return <Badge variant="outline" className="bg-red-50 text-red-700 border-red-200"><Beef className="h-3 w-3 mr-1" />Non-Veg</Badge>;
+      case 'veg': return <Badge variant="outline" className="bg-green-500/10 text-green-700 border-green-200"><Leaf className="h-3 w-3 mr-1" />Veg</Badge>;
+      case 'non_veg': return <Badge variant="outline" className="bg-red-500/10 text-red-700 border-red-200"><Beef className="h-3 w-3 mr-1" />Non-Veg</Badge>;
       case 'both': return <Badge variant="outline" className="bg-orange-50 text-orange-700 border-orange-200">Both</Badge>;
       default: return <Badge variant="outline">{diet}</Badge>;
     }
@@ -389,7 +389,7 @@ export default function KitchenPrep() {
                             {getRiceLabel(member.riceType)}
                           </Badge>
                           {member.freeTrial && (
-                            <Badge variant="outline" className="text-[10px] bg-green-50 text-green-700 border-green-200">
+                            <Badge variant="outline" className="text-[10px] bg-green-500/10 text-green-700 border-green-200">
                               Trial
                             </Badge>
                           )}

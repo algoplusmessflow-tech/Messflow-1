@@ -212,18 +212,18 @@ export default function SalesManagement() {
                       <Input
                         readOnly
                         value={showTokens[sp.id] || sp.access_token}
-                        className="bg-gradient-to-r from-indigo-50 to-purple-50 font-mono text-sm border-2 border-indigo-200 font-semibold tracking-wide"
+                        className="bg-gradient-to-r from-indigo-50 to-purple-50 font-mono text-sm border-2 border-primary/30 font-semibold tracking-wide"
                       />
                       <Button 
                         variant="outline" 
                         size="icon"
                         onClick={() => handleCopyToken(sp.id, showTokens[sp.id] || sp.access_token)}
-                        className="border-2 border-indigo-200 hover:bg-indigo-50"
+                        className="border-2 border-primary/30 hover:bg-primary/10"
                       >
                         {copiedToken === sp.id ? <Check className="h-4 w-4 text-green-600" /> : <Copy className="h-4 w-4" />}
                       </Button>
                     </div>
-                    <p className="text-[10px] text-gray-600">
+                    <p className="text-[10px] text-muted-foreground">
                       Share this 6-character code with the sales person for login
                     </p>
                   </div>
@@ -232,7 +232,7 @@ export default function SalesManagement() {
                   <div className="flex items-center justify-between p-3 bg-gradient-to-r from-blue-50 to-indigo-50 rounded-lg border-2 border-blue-200">
                     <div className="flex items-center gap-2">
                       <Users className="h-4 w-4 text-blue-600" />
-                      <span className="text-sm font-bold text-gray-900">Customers Added</span>
+                      <span className="text-sm font-bold text-foreground">Customers Added</span>
                     </div>
                     <Badge className="bg-blue-600 text-white font-bold px-3 py-1">
                       {salesCustomerCounts[sp.id] || 0}

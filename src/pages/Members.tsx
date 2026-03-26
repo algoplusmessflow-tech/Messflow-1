@@ -2009,24 +2009,24 @@ Thank you for your prompt attention! \u{1F64F}`;
                   <span className="ml-2 text-sm text-muted-foreground">Loading invoices...</span>
                 </div>
               ) : invoices.length === 0 ? (
-                <Card className="border-2 border-dashed border-gray-200 bg-gray-50/50">
+                <Card className="border-2 border-dashed border-border bg-muted/50">
                   <CardContent className="py-8 text-center">
-                    <FileText className="h-12 w-12 mx-auto text-gray-400 mb-3" />
-                    <p className="text-sm font-medium text-gray-600">No invoices found</p>
-                    <p className="text-xs text-gray-500 mt-1">Invoices will appear here once generated</p>
+                    <FileText className="h-12 w-12 mx-auto text-muted-foreground mb-3" />
+                    <p className="text-sm font-medium text-muted-foreground">No invoices found</p>
+                    <p className="text-xs text-muted-foreground mt-1">Invoices will appear here once generated</p>
                   </CardContent>
                 </Card>
               ) : (
                 <>
                   {/* Summary Stats */}
                   <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-4">
-                    <Card className="border-2 border-blue-200 bg-blue-50">
+                    <Card className="border-2 border-primary/30 bg-primary/10">
                       <CardContent className="p-3 text-center">
                         <p className="text-2xl font-extrabold text-blue-900">{invoices.length}</p>
                         <p className="text-[10px] text-blue-700 font-bold mt-1">Total Invoices</p>
                       </CardContent>
                     </Card>
-                    <Card className="border-2 border-green-200 bg-green-50">
+                    <Card className="border-2 border-green-500/30 bg-green-500/10">
                       <CardContent className="p-3 text-center">
                         <p className="text-2xl font-extrabold text-green-900">
                           {invoices.filter(inv => inv.status === 'paid').length}
@@ -2042,7 +2042,7 @@ Thank you for your prompt attention! \u{1F64F}`;
                         <p className="text-[10px] text-amber-700 font-bold mt-1">Unpaid</p>
                       </CardContent>
                     </Card>
-                    <Card className="border-2 border-purple-200 bg-purple-50">
+                    <Card className="border-2 border-violet-500/30 bg-violet-500/10">
                       <CardContent className="p-3 text-center">
                         <p className="text-2xl font-extrabold text-purple-900">
                           {invoices.filter(inv => inv.is_recurring).length}
@@ -2061,7 +2061,7 @@ Thank you for your prompt attention! \u{1F64F}`;
                             <div className="flex items-start justify-between gap-3">
                               <div className="flex-1 min-w-0 space-y-2">
                                 <div className="flex items-center gap-2 flex-wrap">
-                                  <p className="text-sm font-bold text-gray-900 truncate">
+                                  <p className="text-sm font-bold text-foreground truncate">
                                     Invoice #{invoice.invoice_number}
                                   </p>
                                   <Badge
@@ -2081,14 +2081,14 @@ Thank you for your prompt attention! \u{1F64F}`;
                                   )}
                                 </div>
                                 
-                                <div className="grid grid-cols-2 gap-x-4 gap-y-1 text-xs text-gray-700">
+                                <div className="grid grid-cols-2 gap-x-4 gap-y-1 text-xs text-foreground">
                                   <div className="flex items-center gap-1">
-                                    <CalendarIcon className="h-3 w-3 text-gray-500" />
+                                    <CalendarIcon className="h-3 w-3 text-muted-foreground" />
                                     <span className="font-medium">Period:</span>
                                     <span>{formatDate(new Date(invoice.billing_period_start))} - {formatDate(new Date(invoice.billing_period_end))}</span>
                                   </div>
                                   <div className="flex items-center gap-1">
-                                    <CalendarIcon className="h-3 w-3 text-gray-500" />
+                                    <CalendarIcon className="h-3 w-3 text-muted-foreground" />
                                     <span className="font-medium">Created:</span>
                                     <span>{formatDate(new Date(invoice.created_at))}</span>
                                   </div>
@@ -2103,10 +2103,10 @@ Thank you for your prompt attention! \u{1F64F}`;
                               </div>
                               
                               <div className="text-right flex-shrink-0">
-                                <p className="text-lg font-extrabold text-gray-900">
+                                <p className="text-lg font-extrabold text-foreground">
                                   {formatCurrency(Number(invoice.total_amount))}
                                 </p>
-                                <p className="text-[10px] text-gray-600 mt-1">
+                                <p className="text-[10px] text-muted-foreground mt-1">
                                   {invoice.status === 'paid' ? '✓ Paid in full' : '⏳ Pending'}
                                 </p>
                               </div>
@@ -2121,7 +2121,7 @@ Thank you for your prompt attention! \u{1F64F}`;
             </div>
 
             <DialogFooter className="sticky bottom-0 bg-white pt-3 border-t">
-              <Button variant="outline" onClick={() => setIsInvoicesOpen(false)} className="border-2 font-semibold hover:bg-gray-50">
+              <Button variant="outline" onClick={() => setIsInvoicesOpen(false)} className="border-2 font-semibold hover:bg-muted">
                 Close
               </Button>
             </DialogFooter>

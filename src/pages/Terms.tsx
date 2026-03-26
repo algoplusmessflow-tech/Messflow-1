@@ -12,7 +12,7 @@ export default function Terms() {
           <div className="flex justify-between items-center py-4">
             <Link 
               to="/" 
-              className="flex items-center gap-3 text-gray-900 hover:text-primary transition-colors"
+              className="flex items-center gap-3 text-foreground hover:text-primary transition-colors"
             >
               <ArrowLeft className="h-5 w-5" />
               <span className="text-lg font-semibold">Back to Dashboard</span>
@@ -20,13 +20,13 @@ export default function Terms() {
             <div className="flex items-center gap-4">
               <Link 
                 to="/privacy-policy" 
-                className="text-sm text-gray-600 hover:text-gray-900 transition-colors"
+                className="text-sm text-muted-foreground hover:text-foreground transition-colors"
               >
                 Privacy Policy
               </Link>
               <Link 
                 to="/login" 
-                className="px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-md hover:bg-gray-50 transition-colors"
+                className="px-4 py-2 text-sm font-medium text-muted-foreground bg-card border border-border rounded-md hover:bg-muted transition-colors"
               >
                 Sign In
               </Link>
@@ -259,7 +259,7 @@ export default function Terms() {
                   </p>
                 </div>
               </div>
-              <div className="p-4 bg-yellow-50 border border-yellow-200 rounded-lg">
+              <div className="p-4 bg-yellow-500/10 border border-yellow-500/30 rounded-lg">
                 <p className="text-sm text-yellow-800">
                   <strong>Note:</strong> Upon termination, your data will be retained for 30 days and then permanently deleted. 
                   We recommend exporting your data before termination.

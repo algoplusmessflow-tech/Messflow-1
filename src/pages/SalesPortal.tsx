@@ -820,7 +820,7 @@ export default function SalesPortal() {
                                   )}
                                   {day.lunch && (
                                     <div className="flex gap-1">
-                                      <Badge variant="outline" className="text-[10px] bg-amber-50">L</Badge>
+                                      <Badge variant="outline" className="text-[10px] bg-amber-500/10">L</Badge>
                                       <span>{day.lunch}</span>
                                     </div>
                                   )}
@@ -1097,7 +1097,7 @@ export default function SalesPortal() {
                 </div>
               </div>
 
-              <div className={`p-3 rounded-lg border ${formData.free_trial ? 'border-green-500 bg-green-50' : 'bg-muted/30'}`}>
+              <div className={`p-3 rounded-lg border ${formData.free_trial ? 'border-green-500 bg-green-500/10' : 'bg-muted/30'}`}>
                 <div className="flex items-center justify-between">
                   <div>
                     <Label className="text-sm font-medium cursor-pointer">Free Trial</Label>
@@ -1365,7 +1365,7 @@ export default function SalesPortal() {
                 </div>
               </div>
 
-              <div className={`p-3 rounded-lg border ${formData.free_trial ? 'border-green-500 bg-green-50' : 'bg-muted/30'}`}>
+              <div className={`p-3 rounded-lg border ${formData.free_trial ? 'border-green-500 bg-green-500/10' : 'bg-muted/30'}`}>
                 <div className="flex items-center justify-between">
                   <div>
                     <Label className="text-sm font-medium cursor-pointer">Free Trial</Label>

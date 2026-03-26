@@ -619,7 +619,7 @@ export default function Invoices() {
               <CardTitle className="text-sm font-medium text-muted-foreground">Paid</CardTitle>
             </CardHeader>
             <CardContent>
-              <p className="text-2xl font-bold text-green-600">{formatCurrency(totalPaid)}</p>
+              <p className="text-2xl font-bold text-green-500">{formatCurrency(totalPaid)}</p>
             </CardContent>
           </Card>
         </div>
@@ -694,7 +694,7 @@ export default function Invoices() {
                             <div className="flex items-center gap-2">
                               <p className="font-medium">{invoice.invoice_number}</p>
                               {invoice.source && invoice.source !== 'manual' && (
-                                <Badge variant="outline" className="text-[10px] h-4 px-1.5 bg-blue-50 text-blue-700 border-blue-200">
+                                <Badge variant="outline" className="text-[10px] h-4 px-1.5 bg-primary/10 text-primary border-primary/30">
                                   {getSourceLabel(invoice.source)}
                                 </Badge>
                               )}
@@ -788,7 +788,7 @@ export default function Invoices() {
                         {selectedInvoice.status}
                       </Badge>
                       {selectedInvoice.source && selectedInvoice.source !== 'manual' && (
-                        <Badge variant="outline" className="text-[10px] bg-blue-50 text-blue-700 border-blue-200">
+                        <Badge variant="outline" className="text-[10px] bg-primary/10 text-primary border-primary/30">
                           {getSourceLabel(selectedInvoice.source)}
                         </Badge>
                       )}
@@ -817,7 +817,7 @@ export default function Invoices() {
                   {selectedInvoice.paid_date && (
                     <div>
                       <p className="text-sm text-muted-foreground">Paid Date</p>
-                      <p className="font-medium text-green-600">
+                      <p className="font-medium text-green-500">
                         {formatDate(new Date(selectedInvoice.paid_date))}
                       </p>
                     </div>

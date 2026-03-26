@@ -100,21 +100,21 @@ export default function SalesPersonLogin() {
           <div className="mx-auto w-16 h-16 bg-gradient-to-br from-indigo-600 via-purple-600 to-pink-600 rounded-full flex items-center justify-center">
             <User className="h-8 w-8 text-white" />
           </div>
-          <CardTitle className="text-2xl font-bold text-center text-gray-900">
+          <CardTitle className="text-2xl font-bold text-center text-foreground">
             Sales Portal Login
           </CardTitle>
-          <CardDescription className="text-center text-sm text-gray-700">
+          <CardDescription className="text-center text-sm text-muted-foreground">
             Enter your 6-character access code to login
           </CardDescription>
         </CardHeader>
         <CardContent>
           <form onSubmit={handleLogin} className="space-y-4">
             <div className="space-y-2">
-              <Label htmlFor="accessCode" className="text-sm font-semibold text-gray-900">
+              <Label htmlFor="accessCode" className="text-sm font-semibold text-foreground">
                 Access Code
               </Label>
               <div className="relative">
-                <Lock className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
+                <Lock className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
                 <Input
                   id="accessCode"
                   type="text"
@@ -147,7 +147,7 @@ export default function SalesPersonLogin() {
               )}
             </Button>
 
-            <div className="mt-4 p-3 bg-blue-50 border border-blue-200 rounded-lg">
+            <div className="mt-4 p-3 bg-primary/10 border border-primary/30 rounded-lg">
               <div className="flex items-start gap-2">
                 <AlertCircle className="h-4 w-4 text-blue-600 mt-0.5" />
                 <p className="text-xs text-blue-800">

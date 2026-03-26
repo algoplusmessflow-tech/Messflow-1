@@ -252,7 +252,7 @@ export default function Login() {
             <Button
               onClick={handleGoogleLogin}
               disabled={googleLoading || isLocked}
-              className="w-full bg-white text-gray-800 hover:bg-gray-100 font-semibold py-6 text-lg shadow-lg hover:shadow-xl transform hover:scale-105 transition-all duration-200 flex items-center justify-center gap-3"
+              className="w-full bg-card text-foreground hover:bg-muted font-semibold py-6 text-lg shadow-lg hover:shadow-xl transform hover:scale-105 transition-all duration-200 flex items-center justify-center gap-3"
             >
               {googleLoading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
               <svg className="w-5 h-5" viewBox="0 0 24 24" fill="none">
