@@ -717,7 +717,7 @@ function KitchensManager() {
           <Label className="text-xs">Phone Number</Label>
           <div className="flex gap-1">
             <Select value={selectedCountryCode} onValueChange={handleCountryCodeChange}>
-              <SelectTrigger className="w-[100px]">
+              <SelectTrigger className="w-full sm:w-[100px]">
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>

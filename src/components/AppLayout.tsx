@@ -18,7 +18,7 @@ export function AppLayout({ children }: AppLayoutProps) {
     <div className="min-h-[100dvh] bg-background flex flex-col">
       <div className="flex flex-1">
         <DesktopSidebar />
-        <main className="flex-1 pb-20 md:pb-0 md:ml-64 flex flex-col">
+        <main className="flex-1 pb-20 md:pb-0 md:ml-64 flex flex-col overflow-x-hidden min-w-0">
           {/* Mobile Header */}
           <div className="md:hidden sticky top-0 z-40 bg-card/80 backdrop-blur-xl border-b border-border px-4 py-3 flex items-center justify-between">
             <div className="flex items-center gap-2">
@@ -36,7 +36,7 @@ export function AppLayout({ children }: AppLayoutProps) {
               <ThemeToggle />
             </div>
           </div>
-          <div className="container max-w-4xl mx-auto px-4 py-6 flex-1">
+          <div className="w-full max-w-4xl mx-auto px-4 py-6 flex-1 min-w-0">
             {children}
           </div>
           <Footer />

@@ -818,7 +818,7 @@ function DeliveryCompletionsSection({
         <CardContent className="space-y-4">
           <div className="flex flex-wrap gap-2">
             <Select value={dateFilter} onValueChange={setDateFilter}>
-              <SelectTrigger className="w-[140px]">
+              <SelectTrigger className="w-full sm:w-[140px]">
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
@@ -829,7 +829,7 @@ function DeliveryCompletionsSection({
             </Select>
 
             <Select value={driverFilter} onValueChange={setDriverFilter}>
-              <SelectTrigger className="w-[160px]">
+              <SelectTrigger className="w-full sm:w-[160px]">
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>

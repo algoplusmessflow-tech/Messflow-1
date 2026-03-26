@@ -155,11 +155,20 @@ All colors MUST be HSL.
 @layer base {
   * {
     @apply border-border;
+    box-sizing: border-box;
+  }
+
+  html {
+    overflow-x: hidden;
+    width: 100%;
   }
 
   body {
     @apply bg-background text-foreground;
     -webkit-overflow-scrolling: touch;
+    overflow-x: hidden;
+    width: 100%;
+    position: relative;
   }
 
   .modal-text-shadow {
@@ -167,8 +176,15 @@ All colors MUST be HSL.
   }
 
   /* Force long text to wrap on all screens */
-  p, span, h1, h2, h3, h4, td, th, li, label {
+  p, span, h1, h2, h3, h4, td, th, li, label, a {
     overflow-wrap: break-word;
     word-wrap: break-word;
+    word-break: break-word;
+  }
+
+  /* Cards and containers must not exceed viewport */
+  .card, [class*="CardContent"] {
+    max-width: 100%;
+    overflow-wrap: break-word;
   }
 }

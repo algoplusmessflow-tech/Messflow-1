@@ -48,6 +48,7 @@ export default function KitchenPortal() {
   const [members, setMembers] = useState<PrepMember[]>([]);
   const [membersLoading, setMembersLoading] = useState(false);
   const [showPrintDialog, setShowPrintDialog] = useState(false);
+  const [showRequestDialog, setShowRequestDialog] = useState(false);
   const [printSize, setPrintSize] = useState<LabelFormat>('4x2');
   const [nextDayMenu, setNextDayMenu] = useState<{ breakfast?: string; lunch?: string; dinner?: string } | null>(null);
   const [inventoryItems, setInventoryItems] = useState<{ id: string; name: string; unit: string; available_qty: number }[]>([]);
@@ -476,7 +477,20 @@ export default function KitchenPortal() {
         </div>
       </header>
 
-      <main className="max-w-[1600px] mx-auto px-4 py-6 space-y-6">
+      <main className="max-w-[1600px] mx-auto px-4 py-6 space-y-4">
+        {/* Top Action Bar */}
+        <div className="flex items-center gap-2">
+          <Button onClick={handlePrintLabels} size="sm" className="flex-1 h-10">
+            <Printer className="h-4 w-4 mr-1.5" />Print Labels
+          </Button>
+          <Button onClick={handleDownloadPDF} variant="outline" size="sm" className="flex-1 h-10">
+            <Download className="h-4 w-4 mr-1.5" />Prep Sheet
+          </Button>
+          <Button onClick={() => setShowRequestDialog(true)} variant="outline" size="sm" className="flex-1 h-10">
+            <Package className="h-4 w-4 mr-1.5" />Request
+          </Button>
+        </div>
+
         {/* Next Day Menu Preview */}
         {nextDayMenu && (
           <Card className="border border-border bg-primary/5 shadow-sm">
@@ -726,25 +740,28 @@ export default function KitchenPortal() {
               </div>
             </div>
           </CardHeader>
-          <CardContent className="pt-0">
-            {/* All 3 actions in one compact row */}
-            <div className="flex items-center gap-1.5 mb-3">
-              <Button onClick={handlePrintLabels} size="sm" className="h-8 text-xs font-semibold px-3">
-                <Printer className="h-3.5 w-3.5 mr-1.5" />Labels
-              </Button>
-              <Button onClick={handleDownloadPDF} variant="outline" size="sm" className="h-8 text-xs font-semibold px-3">
-                <Download className="h-3.5 w-3.5 mr-1.5" />Prep Sheet
-              </Button>
-              <InventoryRequestForm 
-                ownerId={ownerId} 
-                date={format(selectedDate, 'yyyy-MM-dd')} 
-                inventoryItems={inventoryItems}
-                inventoryLoading={inventoryLoading}
-              />
-            </div>
-          </CardContent>
+          <CardContent className="pt-0" />
         </Card>
       </main>
+
+      {/* Request Dialog — triggered from top action bar */}
+      <Dialog open={showRequestDialog} onOpenChange={setShowRequestDialog}>
+        <DialogContent className="max-w-md max-h-[85vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2 text-sm font-bold">
+              <Package className="h-4 w-4 text-primary" />
+              Inventory Request
+            </DialogTitle>
+          </DialogHeader>
+          <InventoryRequestForm 
+            ownerId={ownerId} 
+            date={format(selectedDate, 'yyyy-MM-dd')} 
+            inventoryItems={inventoryItems}
+            inventoryLoading={inventoryLoading}
+            onClose={() => setShowRequestDialog(false)}
+          />
+        </DialogContent>
+      </Dialog>
 
       {/* Print Label Dialog */}
       <Dialog open={showPrintDialog} onOpenChange={setShowPrintDialog}>
@@ -828,17 +845,18 @@ function InventoryRequestForm({
   ownerId, 
   date,
   inventoryItems,
-  inventoryLoading
+  inventoryLoading,
+  onClose
 }: { 
   ownerId: string; 
   date: string;
   inventoryItems: { id: string; name: string; unit: string; available_qty: number }[];
   inventoryLoading: boolean;
+  onClose?: () => void;
 }) {
   const [requests, setRequests] = useState<Record<string, number>>({});
   const [customRows, setCustomRows] = useState<CustomRequestRow[]>([]);
   const [submitting, setSubmitting] = useState(false);
-  const [showRequestDialog, setShowRequestDialog] = useState(false);
   const [showHistoryDialog, setShowHistoryDialog] = useState(false);
   const [history, setHistory] = useState<InventoryRequest[]>([]);
   const [historyLoading, setHistoryLoading] = useState(false);
@@ -915,7 +933,7 @@ function InventoryRequestForm({
       }
       toast.success('Request submitted!');
       setRequests({}); setCustomRows([]);
-      setShowRequestDialog(false);
+      onClose?.();
       // Show the submitted request detail
       const submitted: InventoryRequest = {
         id: now.slice(0, 16) + '_' + date,
@@ -966,30 +984,7 @@ function InventoryRequestForm({
 
   return (
     <>
-      {/* Single compact action row: New Request only (History moved to Inventory tab) */}
-      <Button
-        onClick={() => setShowRequestDialog(true)}
-        size="sm"
-        className="h-8 text-xs font-semibold px-3"
-      >
-        <Package className="h-3.5 w-3.5 mr-1.5" />
-        New Request
-      </Button>
-
-      {/* New Request Dialog */}
-      <Dialog open={showRequestDialog} onOpenChange={setShowRequestDialog}>
-        <DialogContent className="max-w-md max-h-[85vh] overflow-y-auto">
-          <DialogHeader>
-            <DialogTitle className="flex items-center gap-2">
-              <Package className="h-4 w-4 text-primary" />
-              Inventory Request — {date}
-            </DialogTitle>
-            <DialogDescription className="text-xs">
-              Select quantities from stock or add custom items
-            </DialogDescription>
-          </DialogHeader>
-
-          <div className="space-y-4">
+      <div className="space-y-4">
             {/* From stock */}
             {inventoryItems.length > 0 && (
               <div className="space-y-1">
@@ -1071,17 +1066,15 @@ function InventoryRequestForm({
                 {totalItems} item{totalItems > 1 ? 's' : ''} ready to request
               </div>
             )}
-          </div>
+      </div>
 
-          <DialogFooter className="gap-2 pt-2">
-            <Button variant="outline" onClick={() => setShowRequestDialog(false)} className="flex-1">Cancel</Button>
-            <Button onClick={handleSubmit} className="flex-1" disabled={submitting || totalItems === 0}>
-              {submitting ? <Loader2 className="h-4 w-4 animate-spin mr-1.5" /> : <Package className="h-4 w-4 mr-1.5" />}
-              Submit Request
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+      <div className="flex gap-2 pt-2">
+        <Button variant="outline" onClick={() => onClose?.()} className="flex-1">Cancel</Button>
+        <Button onClick={handleSubmit} className="flex-1" disabled={submitting || totalItems === 0}>
+          {submitting ? <Loader2 className="h-4 w-4 animate-spin mr-1.5" /> : <Package className="h-4 w-4 mr-1.5" />}
+          Submit Request
+        </Button>
+      </div>
 
       {/* Request Detail Dialog */}
       <Dialog open={showDetailDialog} onOpenChange={setShowDetailDialog}>

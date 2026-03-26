@@ -348,8 +348,11 @@ export default function DriverPortal() {
     e.target.value = '';
   };
 
-  // Re-geotag photo when location is captured after photo is already selected
-  const handleCaptureLocationAndRetag = handleCaptureLocation;
+  // GPS accuracy threshold: if accuracy > 50m, flag as unreliable
+  const GPS_ACCURACY_THRESHOLD_M = 50;
+  // Delivery proximity: 10 meters = 0.01 km
+  const DELIVERY_PROXIMITY_KM = 0.01;
+  const [gpsAccuracy, setGpsAccuracy] = useState<number | null>(null);
 
   const handleCaptureLocation = async () => {
     setIsCapturingLocation(true);
@@ -358,19 +361,25 @@ export default function DriverPortal() {
     try {
       const result = await getCurrentLocation();
       setDriverLocation(result.coords);
+      setGpsAccuracy(result.accuracy);
+
+      // Check for GPS glitch — accuracy > 50m means unreliable reading
+      if (result.accuracy > GPS_ACCURACY_THRESHOLD_M) {
+        toast.warning(`GPS accuracy is low (${Math.round(result.accuracy)}m). Try moving to open area.`);
+      }
 
       if (selectedMember?.location_lat && selectedMember?.location_lng) {
         const memberCoords = {
           lat: selectedMember.location_lat,
           lng: selectedMember.location_lng
         };
-        const validation = checkLocationWithinPerimeter(result.coords, memberCoords, 0.5);
+        const validation = checkLocationWithinPerimeter(result.coords, memberCoords, DELIVERY_PROXIMITY_KM);
         setLocationMatched(validation.isWithinPerimeter);
         setDistanceKm(validation.distanceKm);
         if (validation.isWithinPerimeter) {
-          toast.success('Location verified — within delivery area');
+          toast.success('Location verified — within 10m of customer');
         } else {
-          toast.warning(`${formatDistance(validation.distanceKm)} from customer location`);
+          toast.warning(`${formatDistance(validation.distanceKm)} from customer (need < 10m)`);
         }
       } else if (selectedMember?.area?.center_lat && selectedMember?.area?.center_lng) {
         const zoneCenter = { lat: selectedMember.area.center_lat, lng: selectedMember.area.center_lng };
@@ -414,6 +423,26 @@ export default function DriverPortal() {
   const handleCompleteDelivery = async () => {
     if (!selectedMember || !driver || !resolvedOwnerId) return;
 
+    // Block if location not captured
+    if (!driverLocation) {
+      toast.error('Please capture your location first');
+      return;
+    }
+
+    // Determine delivery status based on geo-validation
+    let deliveryStatus: 'completed' | 'flagged' | 'gps_glitch' = 'completed';
+    const noteParts: string[] = [];
+
+    if (gpsAccuracy && gpsAccuracy > GPS_ACCURACY_THRESHOLD_M) {
+      deliveryStatus = 'gps_glitch';
+      noteParts.push(`GPS accuracy: ${Math.round(gpsAccuracy)}m (unreliable)`);
+    } else if (locationMatched === false) {
+      deliveryStatus = 'flagged';
+      noteParts.push(`Distance: ${formatDistance(distanceKm || 0)} from customer (>10m)`);
+    }
+
+    const finalNotes = [notes, ...noteParts].filter(Boolean).join(' | ');
+
     setIsCompleting(true);
     try {
       await completeDeliveryMutation.mutateAsync({
@@ -425,8 +454,8 @@ export default function DriverPortal() {
         locationLng: driverLocation?.lng,
         locationMatched: locationMatched,
         locationMatchDistanceKm: distanceKm || undefined,
-        notes: notes || undefined,
-        status: locationMatched === false ? 'flagged' : 'completed',
+        notes: finalNotes || undefined,
+        status: deliveryStatus,
       });
 
       setMembers(prev => prev.map(m => 
@@ -702,16 +731,28 @@ export default function DriverPortal() {
                     <p className="text-xs font-mono text-muted-foreground">
                       {driverLocation.lat.toFixed(6)}, {driverLocation.lng.toFixed(6)}
                     </p>
+                    {gpsAccuracy !== null && (
+                      <p className={`text-xs ${gpsAccuracy > GPS_ACCURACY_THRESHOLD_M ? 'text-amber-600' : 'text-muted-foreground'}`}>
+                        Accuracy: ±{Math.round(gpsAccuracy)}m
+                        {gpsAccuracy > GPS_ACCURACY_THRESHOLD_M && ' ⚠ Low accuracy — GPS may be unreliable'}
+                      </p>
+                    )}
                     {distanceKm !== null && (
-                      <p className="text-xs text-muted-foreground">
+                      <p className={`text-xs ${locationMatched ? 'text-green-600' : 'text-amber-600'}`}>
                         {formatDistance(distanceKm)} from customer
-                        {locationMatched ? ' ✓ Within range' : ' ⚠ Outside range'}
+                        {locationMatched ? ' ✓ Within 10m' : ' — need to be within 10m'}
                       </p>
                     )}
                     {locationMatched === false && (
-                      <div className="flex items-start gap-2 text-amber-600 bg-amber-50 p-2 rounded">
+                      <div className="flex items-start gap-2 text-amber-600 bg-amber-500/10 p-2 rounded">
                         <AlertTriangle className="h-4 w-4 mt-0.5" />
-                        <p className="text-xs">Delivery will be flagged as location mismatch</p>
+                        <p className="text-xs">Delivery will be flagged — you're more than 10m away from the customer</p>
+                      </div>
+                    )}
+                    {gpsAccuracy !== null && gpsAccuracy > GPS_ACCURACY_THRESHOLD_M && (
+                      <div className="flex items-start gap-2 text-amber-600 bg-amber-500/10 p-2 rounded">
+                        <AlertTriangle className="h-4 w-4 mt-0.5" />
+                        <p className="text-xs">GPS reading unreliable — delivery will be marked as GPS glitch</p>
                       </div>
                     )}
                   </div>
@@ -799,18 +840,27 @@ export default function DriverPortal() {
               </Button>
               <Button
                 onClick={handleCompleteDelivery}
-                disabled={isCompleting || !proofPhoto}
-                className="flex-1"
+                disabled={isCompleting || !proofPhoto || !driverLocation}
+                className={`flex-1 ${locationMatched === false ? 'bg-amber-600 hover:bg-amber-700' : ''} ${gpsAccuracy && gpsAccuracy > GPS_ACCURACY_THRESHOLD_M ? 'bg-amber-600 hover:bg-amber-700' : ''}`}
               >
                 {isCompleting ? (
                   <><Loader2 className="h-4 w-4 mr-2 animate-spin" />Saving...</>
+                ) : locationMatched === false ? (
+                  <><AlertTriangle className="h-4 w-4 mr-2" />Complete (Flagged)</>
+                ) : gpsAccuracy && gpsAccuracy > GPS_ACCURACY_THRESHOLD_M ? (
+                  <><AlertTriangle className="h-4 w-4 mr-2" />Complete (GPS Issue)</>
                 ) : (
                   <><CheckCircle className="h-4 w-4 mr-2" />Complete</>
                 )}
               </Button>
             </div>
 
-            {!proofPhoto && (
+            {!driverLocation && (
+              <p className="text-xs text-center text-destructive">
+                Location must be captured before completing delivery
+              </p>
+            )}
+            {driverLocation && !proofPhoto && (
               <p className="text-xs text-center text-muted-foreground">
                 Photo proof is required to complete delivery
               </p>

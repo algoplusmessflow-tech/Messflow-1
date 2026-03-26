@@ -1448,7 +1448,7 @@ Thank you for your prompt attention! \u{1F64F}`;
                             {formatCurrency(Number(member.balance))}
                           </p>
                         </div>
-                        <div className="flex gap-2 w-full sm:w-auto justify-end flex-wrap sm:flex-nowrap">
+                        <div className="flex gap-2 w-full sm:w-auto justify-end flex-wrap">
                           {Number(member.balance) > 0 && (
                             <Button
                               size="sm"

@@ -115,16 +115,16 @@ export const DeliveryZoneBox: React.FC<Props> = ({
               {zones.map((zone) => (
                 <Card
                   key={zone.id}
-                  className={`cursor-pointer hover:shadow-md transition-all ${
+                  className={`cursor-pointer hover:shadow-md transition-all overflow-hidden ${
                     selectedZoneId === zone.id ? "border-primary border-2" : ""
                   }`}
                   onClick={() => onSelectZone(zone.id)}
                 >
-                  <CardContent className="p-4">
-                    <div className="flex items-start justify-between gap-3">
-                      <div className="flex-1 min-w-0">
-                        <div className="flex items-center gap-2">
-                          <h3 className="font-medium text-foreground truncate">
+                  <CardContent className="p-3 sm:p-4">
+                    <div className="flex flex-col sm:flex-row items-start justify-between gap-2 sm:gap-3">
+                      <div className="flex-1 min-w-0 w-full sm:w-auto">
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <h3 className="font-medium text-foreground truncate text-sm sm:text-base">
                             {zone.name}
                           </h3>
                           {zone.driver && (

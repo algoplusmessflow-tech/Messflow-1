@@ -196,7 +196,7 @@ export default function Menu() {
                   key={week}
                   variant={selectedWeek === week ? 'default' : 'outline'}
                   onClick={() => setSelectedWeek(week)}
-                  className="min-w-[80px]"
+                  className="min-w-0 w-full sm:min-w-[80px]"
                 >
                   Week {week}
                 </Button>
@@ -205,7 +205,7 @@ export default function Menu() {
 
             {/* Day Tabs */}
             <Tabs value={selectedDay} onValueChange={setSelectedDay}>
-              <TabsList className="w-full flex overflow-x-auto">
+              <TabsList className="w-full flex flex-wrap">
                 {DAYS.map((day) => (
                   <TabsTrigger key={day} value={day} className="flex-1 min-w-fit text-xs sm:text-sm">
                     {day.slice(0, 3)}

@@ -5,7 +5,7 @@ import { Card, CardContent } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Skeleton } from '@/components/ui/skeleton';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+
 import {
   Dialog,
   DialogContent,
@@ -35,11 +35,11 @@ import { useInventory } from '@/hooks/useInventory';
 import { useAuth } from '@/lib/auth';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { InventoryBulkAddModal } from '@/components/InventoryBulkAddModal';
-import { DailyConsumptionModal } from '@/components/DailyConsumptionModal';
+
 import { supabase } from '@/integrations/supabase/client';
 import { Badge } from '@/components/ui/badge';
 import { format } from 'date-fns';
-import { Plus, Minus, Trash2, Loader2, Package, Pencil, Upload, ArrowDown, ChefHat, Clock, CheckCircle, Printer } from 'lucide-react';
+import { Plus, Minus, Trash2, Loader2, Package, Pencil, Upload, ChefHat, Clock, CheckCircle, Printer, Truck } from 'lucide-react';
 import { toast } from 'sonner';
 
 const UNITS = ['kg', 'pcs', 'liters', 'grams', 'boxes', 'packets'];
@@ -49,7 +49,7 @@ export default function Inventory() {
   const [isAddOpen, setIsAddOpen] = useState(false);
   const [isEditOpen, setIsEditOpen] = useState(false);
   const [isBulkOpen, setIsBulkOpen] = useState(false);
-  const [isConsumptionOpen, setIsConsumptionOpen] = useState(false);
+
   const [deleteId, setDeleteId] = useState<string | null>(null);
   const [editingItem, setEditingItem] = useState<{ 
     id: string; 
@@ -126,14 +126,6 @@ export default function Inventory() {
           </div>
           
           <div className="flex gap-2">
-            <Button 
-              size="sm" 
-              variant="outline"
-              onClick={() => setIsConsumptionOpen(true)}
-            >
-              <ArrowDown className="h-4 w-4 mr-1" />
-              <span className="hidden sm:inline">Daily Use</span>
-            </Button>
             <Button 
               size="sm" 
               variant="outline"
@@ -381,14 +373,38 @@ export default function Inventory() {
         {/* Bulk Add Modal */}
         <InventoryBulkAddModal open={isBulkOpen} onOpenChange={setIsBulkOpen} />
 
-        {/* Daily Consumption Modal */}
-        <DailyConsumptionModal open={isConsumptionOpen} onOpenChange={setIsConsumptionOpen} />
+
 
         {/* Kitchen Requests Section */}
         <KitchenRequests />
       </div>
     </AppLayout>
   );
+}
+
+// Safe date formatter — handles null, ISO strings, date-only strings
+function safeFormatDate(dateStr: string | null | undefined): string {
+  if (!dateStr) return '';
+  try {
+    // Strip time portion if it looks like a date-only field with timezone
+    const cleaned = dateStr.includes('T') ? dateStr.split('T')[0] : dateStr;
+    const d = new Date(cleaned + 'T00:00:00');
+    if (isNaN(d.getTime())) return dateStr; // fallback to raw string
+    return format(d, 'dd MMM yyyy');
+  } catch {
+    return dateStr || '';
+  }
+}
+
+function safeFormatTime(isoStr: string | null | undefined): string {
+  if (!isoStr) return '';
+  try {
+    const d = new Date(isoStr);
+    if (isNaN(d.getTime())) return '';
+    return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+  } catch {
+    return '';
+  }
 }
 
 // ═══ KITCHEN REQUESTS COMPONENT ═══
@@ -426,7 +442,7 @@ function resolveUnit(req: any, inventoryList?: any[]): string {
 function KitchenRequests() {
   const { user } = useAuth();
   const queryClient = useQueryClient();
-  const { inventory } = useInventory();
+  const { inventory, addItem } = useInventory();
 
   const { data: requests = [], isLoading, refetch } = useQuery({
     queryKey: ['kitchen-requests', user?.id],
@@ -508,26 +524,30 @@ function KitchenRequests() {
     try {
       for (const r of batch.rows) {
         const qty = editQty[r.id] ?? r.quantity_used ?? 0;
+        // Reduce inventory stock if item is from stock
         if (r.inventory_id && qty > 0) {
           const invItem = inventory.find(i => i.id === r.inventory_id);
           if (invItem) {
             const newQty = Math.max(0, Number(invItem.quantity) - qty);
-            await supabase.from('inventory').update({ quantity: newQty }).eq('id', r.inventory_id);
+            const { error: updateErr } = await supabase.from('inventory').update({ quantity: newQty }).eq('id', r.inventory_id);
+            if (updateErr) console.warn('Stock update error:', updateErr.message);
           }
         }
-        // Overwrite notes cleanly — never double-append
+        // Mark as approved — strip any existing [APPROVED] first to avoid duplication
         const baseNotes = (r.notes ?? '').replace(/\s*\[APPROVED\]/g, '').trim();
-        await supabase
+        const { error: noteErr } = await supabase
           .from('inventory_consumption')
           .update({ quantity_used: qty, notes: baseNotes + ' [APPROVED]' })
           .eq('id', r.id);
+        if (noteErr) console.warn('Approval note error:', noteErr.message);
       }
-      // Force fresh fetch, then close dialog
-      await refetch();
-      await queryClient.invalidateQueries({ queryKey: ['inventory'] });
+      // Close dialog first, then force fresh data
       setSelectedBatch(null);
       setEditQty({});
       toast.success(`${batch.rows.length} item(s) approved — stock updated`);
+      // Force refetch with exact key match — await to ensure data is fresh before UI updates
+      await queryClient.invalidateQueries({ queryKey: ['kitchen-requests', user?.id] });
+      await queryClient.invalidateQueries({ queryKey: ['inventory', user?.id] });
     } catch (err: any) {
       toast.error('Failed: ' + err.message);
     } finally {
@@ -545,7 +565,7 @@ function KitchenRequests() {
       const type = r.notes?.includes('SPECIAL REQUEST') ? 'Special' : 'Stock';
       return `<tr><td>${i + 1}</td><td>${name}</td><td>${qty}</td><td>${unit}</td><td>${type}</td></tr>`;
     }).join('');
-    w.document.write(`<!DOCTYPE html><html><head><title>Inventory Request — ${batch.date}</title>
+    w.document.write(`<!DOCTYPE html><html><head><title>Inventory Request — ${safeFormatDate(batch.date)}</title>
       <style>*{margin:0;padding:0;box-sizing:border-box}body{font-family:system-ui,sans-serif;padding:24px;font-size:13px}
       h1{font-size:18px;margin-bottom:4px}p.sub{color:#666;font-size:12px;margin-bottom:16px}
       table{width:100%;border-collapse:collapse;margin-top:12px}th,td{border:1px solid #ddd;padding:8px 12px;text-align:left}
@@ -556,7 +576,7 @@ function KitchenRequests() {
         <button onclick="window.print()" style="padding:8px 20px;cursor:pointer;border:1px solid #ddd;border-radius:6px">Print</button>
       </div>
       <h1>Inventory Request</h1>
-      <p class="sub">Date: ${batch.date} &nbsp;|&nbsp; Submitted: ${new Date(batch.created_at).toLocaleString()}</p>
+      <p class="sub">Date: ${safeFormatDate(batch.date)} &nbsp;|&nbsp; Submitted: ${safeFormatTime(batch.created_at)}</p>
       <table><thead><tr><th>#</th><th>Item</th><th>Qty</th><th>Unit</th><th>Type</th></tr></thead>
       <tbody>${rows}</tbody></table>
       <div class="footer">Total: ${batch.rows.length} items &nbsp;|&nbsp; MessFlow</div>
@@ -615,7 +635,7 @@ function KitchenRequests() {
                       {batch.rows.length} item{batch.rows.length > 1 ? 's' : ''} requested
                     </p>
                     <p className="text-xs text-muted-foreground">
-                      {batch.date} · {new Date(batch.created_at).toLocaleTimeString()}
+                      {safeFormatDate(batch.date)} · {safeFormatTime(batch.created_at)}
                     </p>
                     <div className="flex flex-wrap gap-1 mt-1">
                       {batch.rows.slice(0, 3).map((r, i) => (
@@ -664,13 +684,18 @@ function KitchenRequests() {
                 >
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-2">
-                      <p className="text-sm font-medium">{batch.date}</p>
+                      <p className="text-sm font-medium">{safeFormatDate(batch.date) || 'Unknown'}</p>
                       <Badge variant="outline" className="text-[9px] border-green-500 text-green-600">
                         <CheckCircle className="h-2.5 w-2.5 mr-0.5" /> Approved
                       </Badge>
+                      {batch.rows[0]?.notes?.includes('[DELIVERED]') && (
+                        <Badge variant="outline" className="text-[9px] border-primary text-primary">
+                          <Truck className="h-2.5 w-2.5 mr-0.5" /> Delivered
+                        </Badge>
+                      )}
                     </div>
                     <p className="text-xs text-muted-foreground">
-                      {batch.rows.length} item{batch.rows.length > 1 ? 's' : ''} · {new Date(batch.created_at).toLocaleTimeString()}
+                      {batch.rows.length} item{batch.rows.length > 1 ? 's' : ''} · {safeFormatTime(batch.created_at)}
                     </p>
                     <div className="flex flex-wrap gap-1 mt-1">
                       {batch.rows.slice(0, 3).map((r, i) => (
@@ -712,7 +737,7 @@ function KitchenRequests() {
           {selectedBatch && (
             <div className="space-y-3">
               <p className="text-xs text-muted-foreground">
-                Submitted: {new Date(selectedBatch.created_at).toLocaleString()}
+                Submitted: {safeFormatDate(selectedBatch.date)} · {safeFormatTime(selectedBatch.created_at)}
               </p>
               <div className="rounded-lg border border-border divide-y divide-border">
                 {selectedBatch.rows.map((r) => {
@@ -720,10 +745,26 @@ function KitchenRequests() {
                   const unit = resolveUnit(r, inventory);
                   const isApproved = r.notes?.includes('[APPROVED]');
                   return (
-                    <div key={r.id} className="flex items-center gap-3 px-3 py-2.5">
+                    <div key={r.id} className="px-3 py-2.5">
+                      <div className="flex items-center gap-3">
                       <div className="flex-1 min-w-0">
                         <p className="text-sm font-medium truncate">{name}</p>
-                        <p className="text-[10px] text-muted-foreground">{unit}</p>
+                        <div className="flex items-center gap-1">
+                          <p className="text-[10px] text-muted-foreground">{unit}</p>
+                          {!r.inventory_id && r.notes?.includes('SPECIAL REQUEST') && !inventory.some(inv => inv.item_name.toLowerCase() === name.toLowerCase()) && (
+                            <Button
+                              variant="ghost" size="sm" className="h-5 text-[10px] text-primary px-1.5"
+                              onClick={async (e) => {
+                                e.stopPropagation();
+                                await addItem.mutateAsync({ item_name: name, quantity: 0, unit } as any);
+                                await queryClient.invalidateQueries({ queryKey: ['inventory', user?.id] });
+                                toast.success(`"${name}" added to inventory`);
+                              }}
+                            >
+                              + Add to Inventory
+                            </Button>
+                          )}
+                        </div>
                       </div>
                       {isApproved ? (
                         <span className="text-sm text-muted-foreground">{editQty[r.id] ?? r.quantity_used} {unit}</span>
@@ -738,14 +779,38 @@ function KitchenRequests() {
                           <span className="text-xs text-muted-foreground w-8">{unit}</span>
                         </div>
                       )}
+                      </div>
                     </div>
                   );
                 })}
               </div>
               {selectedBatch.rows[0]?.notes?.includes('[APPROVED]') && (
-                <Badge variant="outline" className="border-green-500 text-green-600 w-full justify-center py-1">
-                  <CheckCircle className="h-3.5 w-3.5 mr-1.5" /> Approved
-                </Badge>
+                <div className="space-y-2">
+                  <Badge variant="outline" className="border-green-500 text-green-600 w-full justify-center py-1">
+                    <CheckCircle className="h-3.5 w-3.5 mr-1.5" /> Approved
+                  </Badge>
+                  {!selectedBatch.rows[0]?.notes?.includes('[DELIVERED]') ? (
+                    <Button
+                      variant="outline"
+                      className="w-full border-primary text-primary"
+                      onClick={async () => {
+                        for (const r of selectedBatch.rows) {
+                          const baseNotes = (r.notes ?? '').replace(/\s*\[DELIVERED\]/g, '').trim();
+                          await supabase.from('inventory_consumption').update({ notes: baseNotes + ' [DELIVERED]' }).eq('id', r.id);
+                        }
+                        setSelectedBatch(null);
+                        queryClient.invalidateQueries({ queryKey: ['kitchen-requests', user?.id] });
+                        toast.success('Items marked as delivered to kitchen');
+                      }}
+                    >
+                      <Truck className="h-4 w-4 mr-1.5" /> Mark as Delivered
+                    </Button>
+                  ) : (
+                    <Badge variant="outline" className="border-primary text-primary w-full justify-center py-1">
+                      <Truck className="h-3.5 w-3.5 mr-1.5" /> Delivered to Kitchen
+                    </Badge>
+                  )}
+                </div>
               )}
             </div>
           )}

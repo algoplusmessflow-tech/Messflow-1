@@ -154,7 +154,7 @@ export default function Reports() {
                   value={selectedMonth.toISOString()}
                   onValueChange={(value) => setSelectedMonth(new Date(value))}
                 >
-                  <SelectTrigger className="w-[180px]">
+                  <SelectTrigger className="w-full sm:w-[180px]">
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
