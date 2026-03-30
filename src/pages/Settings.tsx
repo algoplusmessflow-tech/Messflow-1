@@ -805,24 +805,6 @@ export default function Settings() {
                       <Info className="h-3 w-3" />
                       Business name cannot be changed after signup
                     </p>
-                    <Label className="mt-4">Business Mode</Label>
-                    <Select value={businessMode} onValueChange={(v) => {
-                      setBusinessMode(v);
-                      updateProfile.mutate({ business_type: v });
-                    }}>
-                      <SelectTrigger>
-                        <SelectValue placeholder="Select mode" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="mess">Mess Mode (Subscriptions & Delivery)</SelectItem>
-                        <SelectItem value="restaurant">Restaurant Mode (Tables & Realtime KOT)</SelectItem>
-                        <SelectItem value="canteen">Canteen Mode (Pre-paid Tokens & Bulk)</SelectItem>
-                      </SelectContent>
-                    </Select>
-                    <p className="text-xs text-muted-foreground flex items-center gap-1 mt-1">
-                      <Info className="h-3 w-3" />
-                      Changing your mode will instantly update your dashboard and navigation to match your business type.
-                    </p>
                   </div>
                   
                   <div className="space-y-2">

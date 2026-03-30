@@ -46,6 +46,7 @@ import { useMapConfig } from '@/hooks/useMapConfig';
 import { fetchLocationFromAddress, extractCoordinatesFromInput } from '@/lib/geolocation';
 import { useFreeTierLimits } from '@/hooks/useFreeTierLimits';
 import { formatCurrency, formatDate, toDateInputValue, calculateExpiryDate, getDaysUntilExpiry } from '@/lib/format';
+import { useAppMode } from '@/contexts/ModeContext';
 import { generateMemberInvoice } from '@/lib/pdf-generator';
 import { shareInvoiceViaWhatsApp, createInvoicePDF } from '@/lib/whatsapp-pdf-share';
 import { generatePortalCredentials } from '@/lib/credentials';
@@ -66,6 +67,8 @@ type MemberStatus = Database['public']['Enums']['member_status'];
 
 export default function Members() {
   const { user } = useAuth();
+  const { mode } = useAppMode();
+  const isMessMode = mode === 'mess';
   const mapConfig = useMapConfig();
   const { members, isLoading, addMember, updateMember, deleteMember } = useMembers();
   const [isFetchingLocation, setIsFetchingLocation] = useState(false);
@@ -1000,25 +1003,27 @@ Thank you for your prompt attention! \u{1F64F}`;
                       required
                     />
                   </div>
+                  {isMessMode && (
+                    <div className="space-y-2">
+                      <Label htmlFor="plan">Meal Plan</Label>
+                      <Select
+                        value={formData.plan_type}
+                        onValueChange={(value: PlanType) => setFormData({ ...formData, plan_type: value })}
+                      >
+                        <SelectTrigger>
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="1-time">1 Time</SelectItem>
+                          <SelectItem value="2-time">2 Times</SelectItem>
+                          <SelectItem value="3-time">3 Times</SelectItem>
+                          <SelectItem value="custom">Custom</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+                  )}
                   <div className="space-y-2">
-                    <Label htmlFor="plan">Meal Plan</Label>
-                    <Select
-                      value={formData.plan_type}
-                      onValueChange={(value: PlanType) => setFormData({ ...formData, plan_type: value })}
-                    >
-                      <SelectTrigger>
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="1-time">1 Time</SelectItem>
-                        <SelectItem value="2-time">2 Times</SelectItem>
-                        <SelectItem value="3-time">3 Times</SelectItem>
-                        <SelectItem value="custom">Custom</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </div>
-                  <div className="space-y-2">
-                    <Label htmlFor="fee">Monthly Fee (AED)</Label>
+                    <Label htmlFor="fee">{isMessMode ? 'Monthly Fee' : 'Initial Balance / Credit'} (AED)</Label>
                     <Input
                       id="fee"
                       type="number"
@@ -1071,60 +1076,64 @@ Thank you for your prompt attention! \u{1F64F}`;
                     </Select>
                   </div>
 
-                  {/* Food Preferences */}
-                  <div className="grid grid-cols-2 gap-4">
-                    <div className="space-y-2">
-                      <Label>Meal Type</Label>
-                      <Select
-                        value={formData.meal_type}
-                        onValueChange={(value) => setFormData({ ...formData, meal_type: value })}
-                      >
-                        <SelectTrigger><SelectValue /></SelectTrigger>
-                        <SelectContent>
-                          {defaultMealOptions.map((opt) => (
-                            <SelectItem key={opt.value} value={opt.value}>{opt.label}</SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                    </div>
-                    <div className="space-y-2">
-                      <Label>Roti Quantity</Label>
-                      <Input
-                        type="number"
-                        min="0"
-                        value={formData.roti_quantity}
-                        onChange={(e) => setFormData({ ...formData, roti_quantity: parseInt(e.target.value) || 0 })}
-                      />
-                    </div>
-                  </div>
-                  <div className="grid grid-cols-2 gap-4">
-                    <div className="space-y-2">
-                      <Label>Rice Type</Label>
-                      <InlineAddSelect
-                        value={formData.rice_type}
-                        onValueChange={(value) => setFormData({ ...formData, rice_type: value })}
-                        options={riceOptions}
-                        placeholder="Select rice type"
-                        onAdd={handleAddRiceOption}
-                        onEdit={handleEditRiceOption}
-                        addLabel="Add rice type"
-                      />
-                    </div>
-                    <div className="space-y-2">
-                      <Label>Dietary Preference</Label>
-                      <Select
-                        value={formData.dietary_preference}
-                        onValueChange={(value) => setFormData({ ...formData, dietary_preference: value })}
-                      >
-                        <SelectTrigger><SelectValue /></SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="veg">Veg</SelectItem>
-                          <SelectItem value="non_veg">Non-Veg</SelectItem>
-                          <SelectItem value="both">Both</SelectItem>
-                        </SelectContent>
-                      </Select>
-                    </div>
-                  </div>
+                  {/* Food Preferences - Mess Only */}
+                  {isMessMode && (
+                    <>
+                      <div className="grid grid-cols-2 gap-4">
+                        <div className="space-y-2">
+                          <Label>Meal Type</Label>
+                          <Select
+                            value={formData.meal_type}
+                            onValueChange={(value) => setFormData({ ...formData, meal_type: value })}
+                          >
+                            <SelectTrigger><SelectValue /></SelectTrigger>
+                            <SelectContent>
+                              {defaultMealOptions.map((opt) => (
+                                <SelectItem key={opt.value} value={opt.value}>{opt.label}</SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                        </div>
+                        <div className="space-y-2">
+                          <Label>Roti Quantity</Label>
+                          <Input
+                            type="number"
+                            min="0"
+                            value={formData.roti_quantity}
+                            onChange={(e) => setFormData({ ...formData, roti_quantity: parseInt(e.target.value) || 0 })}
+                          />
+                        </div>
+                      </div>
+                      <div className="grid grid-cols-2 gap-4">
+                        <div className="space-y-2">
+                          <Label>Rice Type</Label>
+                          <InlineAddSelect
+                            value={formData.rice_type}
+                            onValueChange={(value) => setFormData({ ...formData, rice_type: value })}
+                            options={riceOptions}
+                            placeholder="Select rice type"
+                            onAdd={handleAddRiceOption}
+                            onEdit={handleEditRiceOption}
+                            addLabel="Add rice type"
+                          />
+                        </div>
+                        <div className="space-y-2">
+                          <Label>Dietary Preference</Label>
+                          <Select
+                            value={formData.dietary_preference}
+                            onValueChange={(value) => setFormData({ ...formData, dietary_preference: value })}
+                          >
+                            <SelectTrigger><SelectValue /></SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="veg">Veg</SelectItem>
+                              <SelectItem value="non_veg">Non-Veg</SelectItem>
+                              <SelectItem value="both">Both</SelectItem>
+                            </SelectContent>
+                          </Select>
+                        </div>
+                      </div>
+                    </>
+                  )}
 
                   {/* Referred By — Smart Reminder */}
                   <div className="space-y-2">
@@ -1163,99 +1172,101 @@ Thank you for your prompt attention! \u{1F64F}`;
                     />
                   </div>
 
-                  {/* Service Toggles */}
-                  <div className="space-y-3">
-                    <div className="grid grid-cols-2 gap-3">
-                      <div className="flex items-center justify-between p-3 rounded-lg border bg-muted/30">
-                        <div>
-                          <Label htmlFor="pause-toggle" className="text-sm cursor-pointer">Pause Service</Label>
-                          <p className="text-[10px] text-muted-foreground">Temporarily stop deliveries</p>
+                  {/* Service Toggles - Mess Only */}
+                  {isMessMode && (
+                    <div className="space-y-3">
+                      <div className="grid grid-cols-2 gap-3">
+                        <div className="flex items-center justify-between p-3 rounded-lg border bg-muted/30">
+                          <div>
+                            <Label htmlFor="pause-toggle" className="text-sm cursor-pointer">Pause Service</Label>
+                            <p className="text-[10px] text-muted-foreground">Temporarily stop deliveries</p>
+                          </div>
+                          <Switch
+                            id="pause-toggle"
+                            checked={formData.pause_service}
+                            onCheckedChange={(checked) => setFormData({ ...formData, pause_service: checked })}
+                          />
                         </div>
-                        <Switch
-                          id="pause-toggle"
-                          checked={formData.pause_service}
-                          onCheckedChange={(checked) => setFormData({ ...formData, pause_service: checked })}
-                        />
+                        <div className="flex items-center justify-between p-3 rounded-lg border bg-muted/30">
+                          <div>
+                            <Label htmlFor="weekends-toggle" className="text-sm cursor-pointer">Skip Weekends</Label>
+                            <p className="text-[10px] text-muted-foreground">No Sat & Sun delivery</p>
+                          </div>
+                          <Switch
+                            id="weekends-toggle"
+                            checked={formData.skip_weekends}
+                            onCheckedChange={(checked) => setFormData({ ...formData, skip_weekends: checked })}
+                          />
+                        </div>
                       </div>
-                      <div className="flex items-center justify-between p-3 rounded-lg border bg-muted/30">
-                        <div>
-                          <Label htmlFor="weekends-toggle" className="text-sm cursor-pointer">Skip Weekends</Label>
-                          <p className="text-[10px] text-muted-foreground">No Sat & Sun delivery</p>
+                      <div className={`p-3 rounded-lg border ${formData.free_trial ? 'border-green-500 bg-green-500/5' : 'bg-muted/30'}`}>
+                        <div className="flex items-center justify-between">
+                          <div>
+                            <Label htmlFor="trial-toggle" className="text-sm cursor-pointer">Free Trial</Label>
+                            <p className="text-[10px] text-muted-foreground">
+                              {formData.free_trial 
+                                ? `${formData.trial_days}-day trial (service stops after expiry)` 
+                                : 'Regular paid subscription'}
+                            </p>
+                          </div>
+                          <Switch
+                            id="trial-toggle"
+                            checked={formData.free_trial}
+                            onCheckedChange={(checked) => setFormData({ 
+                              ...formData, 
+                              free_trial: checked, 
+                              // When enabling trial, set as unpaid (balance will be charged after trial)
+                              // When disabling trial, require immediate payment
+                              isPaid: checked ? false : formData.isPaid 
+                            })}
+                          />
                         </div>
-                        <Switch
-                          id="weekends-toggle"
-                          checked={formData.skip_weekends}
-                          onCheckedChange={(checked) => setFormData({ ...formData, skip_weekends: checked })}
-                        />
+                        {formData.free_trial && (
+                          <div className="mt-3 space-y-2">
+                            <div className="flex items-center gap-2">
+                              <Label className="text-xs text-muted-foreground whitespace-nowrap">Trial Duration:</Label>
+                              <Select
+                                value={String(formData.trial_days)}
+                                onValueChange={(v) => setFormData({ ...formData, trial_days: parseInt(v) })}
+                              >
+                                <SelectTrigger className="h-8 w-28">
+                                  <SelectValue />
+                                </SelectTrigger>
+                                <SelectContent>
+                                  <SelectItem value="1">1 day</SelectItem>
+                                  <SelectItem value="3">3 days</SelectItem>
+                                  <SelectItem value="5">5 days</SelectItem>
+                                  <SelectItem value="7">7 days</SelectItem>
+                                  <SelectItem value="14">14 days</SelectItem>
+                                  <SelectItem value="30">30 days</SelectItem>
+                                </SelectContent>
+                              </Select>
+                            </div>
+                            <div className="grid grid-cols-2 gap-3">
+                              <div className="space-y-1">
+                                <Label className="text-xs">Trial Start Date</Label>
+                                <Input
+                                  type="date"
+                                  value={formData.joining_date}
+                                  onChange={(e) => setFormData({ ...formData, joining_date: e.target.value })}
+                                  className="h-8"
+                                />
+                              </div>
+                              <div className="space-y-1">
+                                <Label className="text-xs">Trial End Date</Label>
+                                <Input
+                                  type="date"
+                                  value={new Date(new Date(formData.joining_date).setDate(new Date(formData.joining_date).getDate() + formData.trial_days)).toISOString().split('T')[0]}
+                                  disabled
+                                  className="h-8 bg-muted"
+                                />
+                              </div>
+                            </div>
+                          </div>
+                        )}
                       </div>
                     </div>
-                    <div className={`p-3 rounded-lg border ${formData.free_trial ? 'border-green-500 bg-green-500/5' : 'bg-muted/30'}`}>
-                      <div className="flex items-center justify-between">
-                        <div>
-                          <Label htmlFor="trial-toggle" className="text-sm cursor-pointer">Free Trial</Label>
-                          <p className="text-[10px] text-muted-foreground">
-                            {formData.free_trial 
-                              ? `${formData.trial_days}-day trial (service stops after expiry)` 
-                              : 'Regular paid subscription'}
-                          </p>
-                        </div>
-                        <Switch
-                          id="trial-toggle"
-                          checked={formData.free_trial}
-                          onCheckedChange={(checked) => setFormData({ 
-                            ...formData, 
-                            free_trial: checked, 
-                            // When enabling trial, set as unpaid (balance will be charged after trial)
-                            // When disabling trial, require immediate payment
-                            isPaid: checked ? false : formData.isPaid 
-                          })}
-                        />
-                      </div>
-                      {formData.free_trial && (
-                        <div className="mt-3 space-y-2">
-                          <div className="flex items-center gap-2">
-                            <Label className="text-xs text-muted-foreground whitespace-nowrap">Trial Duration:</Label>
-                            <Select
-                              value={String(formData.trial_days)}
-                              onValueChange={(v) => setFormData({ ...formData, trial_days: parseInt(v) })}
-                            >
-                              <SelectTrigger className="h-8 w-28">
-                                <SelectValue />
-                              </SelectTrigger>
-                              <SelectContent>
-                                <SelectItem value="1">1 day</SelectItem>
-                                <SelectItem value="3">3 days</SelectItem>
-                                <SelectItem value="5">5 days</SelectItem>
-                                <SelectItem value="7">7 days</SelectItem>
-                                <SelectItem value="14">14 days</SelectItem>
-                                <SelectItem value="30">30 days</SelectItem>
-                              </SelectContent>
-                            </Select>
-                          </div>
-                          <div className="grid grid-cols-2 gap-3">
-                            <div className="space-y-1">
-                              <Label className="text-xs">Trial Start Date</Label>
-                              <Input
-                                type="date"
-                                value={formData.joining_date}
-                                onChange={(e) => setFormData({ ...formData, joining_date: e.target.value })}
-                                className="h-8"
-                              />
-                            </div>
-                            <div className="space-y-1">
-                              <Label className="text-xs">Trial End Date</Label>
-                              <Input
-                                type="date"
-                                value={new Date(new Date(formData.joining_date).setDate(new Date(formData.joining_date).getDate() + formData.trial_days)).toISOString().split('T')[0]}
-                                disabled
-                                className="h-8 bg-muted"
-                              />
-                            </div>
-                          </div>
-                        </div>
-                      )}
-                    </div>
-                  </div>
+                  )}
 
                   <div className="flex items-center justify-between p-4 rounded-lg border bg-muted/30">
                     <div className="space-y-0.5">
@@ -1431,14 +1442,14 @@ Thank you for your prompt attention! \u{1F64F}`;
                             <Phone className="h-3 w-3" />
                             {member.phone}
                           </span>
-                          <span>{member.plan_type}</span>
+                          {isMessMode && <span>{member.plan_type}</span>}
                           <span className="flex items-center gap-1">
                             <UserPlus className="h-3 w-3" />
                             Joined: {formatDate(new Date(member.joining_date))}
                           </span>
                         </div>
                         <div className="flex items-center gap-4 mt-1 text-xs text-muted-foreground flex-wrap">
-                          {member.plan_expiry_date && (
+                          {isMessMode && member.plan_expiry_date && (
                             <span>
                               Expires: {formatDate(new Date(member.plan_expiry_date))}
                             </span>
@@ -1449,31 +1460,31 @@ Thank you for your prompt attention! \u{1F64F}`;
                               {(member as any).address}
                             </span>
                           )}
-                          {(member as any).meal_type && (member as any).meal_type !== 'both' && (
+                          {isMessMode && (member as any).meal_type && (member as any).meal_type !== 'both' && (
                             <span className="flex items-center gap-1">
                               <UtensilsCrossed className="h-3 w-3" />
                               {(member as any).meal_type === 'lunch' ? 'Lunch' : 'Dinner'}
                             </span>
                           )}
-                          {(member as any).roti_quantity > 0 && (
+                          {isMessMode && (member as any).roti_quantity > 0 && (
                             <span>Roti: {(member as any).roti_quantity}</span>
                           )}
-                          {(member as any).dietary_preference && (member as any).dietary_preference !== 'both' && (
+                          {isMessMode && (member as any).dietary_preference && (member as any).dietary_preference !== 'both' && (
                             <Badge variant="outline" className="text-[10px] h-4 px-1">
                               {(member as any).dietary_preference === 'veg' ? 'Veg' : 'Non-Veg'}
                             </Badge>
                           )}
-                          {(member as any).pause_service && (
+                          {isMessMode && (member as any).pause_service && (
                             <Badge variant="outline" className="text-[10px] h-4 px-1 border-amber-500 text-amber-500">
                               <Pause className="h-2 w-2 mr-0.5" /> Paused
                             </Badge>
                           )}
-                          {(member as any).free_trial && !isTrialExpired(member) && (
+                          {isMessMode && (member as any).free_trial && !isTrialExpired(member) && (
                             <Badge variant="outline" className="text-[10px] h-4 px-1 border-green-500 text-green-500">
                               Trial
                             </Badge>
                           )}
-                          {isTrialExpired(member) && (
+                          {isMessMode && isTrialExpired(member) && (
                             <Badge variant="outline" className="text-[10px] h-4 px-1 border-red-500 text-red-500">
                               <AlertTriangle className="h-2 w-2 mr-0.5" /> Trial Expired
                             </Badge>
@@ -1730,25 +1741,27 @@ Thank you for your prompt attention! \u{1F64F}`;
                   required
                 />
               </div>
+              {isMessMode && (
+                <div className="space-y-2">
+                  <Label htmlFor="edit-plan">Meal Plan</Label>
+                  <Select
+                    value={editFormData.plan_type}
+                    onValueChange={(value: PlanType) => setEditFormData({ ...editFormData, plan_type: value })}
+                  >
+                    <SelectTrigger>
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="1-time">1 Time</SelectItem>
+                      <SelectItem value="2-time">2 Times</SelectItem>
+                      <SelectItem value="3-time">3 Times</SelectItem>
+                      <SelectItem value="custom">Custom</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+              )}
               <div className="space-y-2">
-                <Label htmlFor="edit-plan">Meal Plan</Label>
-                <Select
-                  value={editFormData.plan_type}
-                  onValueChange={(value: PlanType) => setEditFormData({ ...editFormData, plan_type: value })}
-                >
-                  <SelectTrigger>
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="1-time">1 Time</SelectItem>
-                    <SelectItem value="2-time">2 Times</SelectItem>
-                    <SelectItem value="3-time">3 Times</SelectItem>
-                    <SelectItem value="custom">Custom</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="edit-fee">Monthly Fee (AED)</Label>
+                <Label htmlFor="edit-fee">{isMessMode ? 'Monthly Fee' : 'Initial Balance / Credit'} (AED)</Label>
                 <Input
                   id="edit-fee"
                   type="number"
@@ -1800,49 +1813,53 @@ Thank you for your prompt attention! \u{1F64F}`;
                 </Select>
               </div>
 
-              {/* Food Preferences */}
-              <div className="grid grid-cols-2 gap-4">
-                <div className="space-y-2">
-                  <Label>Meal Type</Label>
-                  <Select value={editFormData.meal_type} onValueChange={(v) => setEditFormData({ ...editFormData, meal_type: v })}>
-                    <SelectTrigger><SelectValue /></SelectTrigger>
-                    <SelectContent>
-                      {defaultMealOptions.map((opt) => (
-                        <SelectItem key={opt.value} value={opt.value}>{opt.label}</SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-                <div className="space-y-2">
-                  <Label>Roti Quantity</Label>
-                  <Input type="number" min="0" value={editFormData.roti_quantity} onChange={(e) => setEditFormData({ ...editFormData, roti_quantity: parseInt(e.target.value) || 0 })} />
-                </div>
-              </div>
-              <div className="grid grid-cols-2 gap-4">
-                <div className="space-y-2">
-                  <Label>Rice Type</Label>
-                  <InlineAddSelect
-                    value={editFormData.rice_type}
-                    onValueChange={(v) => setEditFormData({ ...editFormData, rice_type: v })}
-                    options={riceOptions}
-                    placeholder="Select rice type"
-                    onAdd={handleAddRiceOption}
-                    onEdit={handleEditRiceOption}
-                    addLabel="Add rice type"
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label>Dietary Preference</Label>
-                  <Select value={editFormData.dietary_preference} onValueChange={(v) => setEditFormData({ ...editFormData, dietary_preference: v })}>
-                    <SelectTrigger><SelectValue /></SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="veg">Veg</SelectItem>
-                      <SelectItem value="non_veg">Non-Veg</SelectItem>
-                      <SelectItem value="both">Both</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-              </div>
+              {/* Food Preferences - Mess Only */}
+              {isMessMode && (
+                <>
+                  <div className="grid grid-cols-2 gap-4">
+                    <div className="space-y-2">
+                      <Label>Meal Type</Label>
+                      <Select value={editFormData.meal_type} onValueChange={(v) => setEditFormData({ ...editFormData, meal_type: v })}>
+                        <SelectTrigger><SelectValue /></SelectTrigger>
+                        <SelectContent>
+                          {defaultMealOptions.map((opt) => (
+                            <SelectItem key={opt.value} value={opt.value}>{opt.label}</SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <div className="space-y-2">
+                      <Label>Roti Quantity</Label>
+                      <Input type="number" min="0" value={editFormData.roti_quantity} onChange={(e) => setEditFormData({ ...editFormData, roti_quantity: parseInt(e.target.value) || 0 })} />
+                    </div>
+                  </div>
+                  <div className="grid grid-cols-2 gap-4">
+                    <div className="space-y-2">
+                      <Label>Rice Type</Label>
+                      <InlineAddSelect
+                        value={editFormData.rice_type}
+                        onValueChange={(v) => setEditFormData({ ...editFormData, rice_type: v })}
+                        options={riceOptions}
+                        placeholder="Select rice type"
+                        onAdd={handleAddRiceOption}
+                        onEdit={handleEditRiceOption}
+                        addLabel="Add rice type"
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label>Dietary Preference</Label>
+                      <Select value={editFormData.dietary_preference} onValueChange={(v) => setEditFormData({ ...editFormData, dietary_preference: v })}>
+                        <SelectTrigger><SelectValue /></SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="veg">Veg</SelectItem>
+                          <SelectItem value="non_veg">Non-Veg</SelectItem>
+                          <SelectItem value="both">Both</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+                  </div>
+                </>
+              )}
 
               {/* Special Notes */}
               <div className="space-y-2">
@@ -1855,86 +1872,88 @@ Thank you for your prompt attention! \u{1F64F}`;
                 />
               </div>
 
-              {/* Service Toggles */}
-              <div className="space-y-3">
-                <div className="grid grid-cols-2 gap-3">
-                  <div className="flex items-center justify-between p-3 rounded-lg border bg-muted/30">
-                    <div>
-                      <Label className="text-sm cursor-pointer">Pause Service</Label>
-                      <p className="text-[10px] text-muted-foreground">Temporarily stop deliveries</p>
+              {/* Service Toggles - Mess Only */}
+              {isMessMode && (
+                <div className="space-y-3">
+                  <div className="grid grid-cols-2 gap-3">
+                    <div className="flex items-center justify-between p-3 rounded-lg border bg-muted/30">
+                      <div>
+                        <Label className="text-sm cursor-pointer">Pause Service</Label>
+                        <p className="text-[10px] text-muted-foreground">Temporarily stop deliveries</p>
+                      </div>
+                      <Switch checked={editFormData.pause_service} onCheckedChange={(c) => setEditFormData({ ...editFormData, pause_service: c })} />
                     </div>
-                    <Switch checked={editFormData.pause_service} onCheckedChange={(c) => setEditFormData({ ...editFormData, pause_service: c })} />
+                    <div className="flex items-center justify-between p-3 rounded-lg border bg-muted/30">
+                      <div>
+                        <Label className="text-sm cursor-pointer">Skip Weekends</Label>
+                        <p className="text-[10px] text-muted-foreground">No Sat & Sun delivery</p>
+                      </div>
+                      <Switch checked={editFormData.skip_weekends} onCheckedChange={(c) => setEditFormData({ ...editFormData, skip_weekends: c })} />
+                    </div>
                   </div>
-                  <div className="flex items-center justify-between p-3 rounded-lg border bg-muted/30">
-                    <div>
-                      <Label className="text-sm cursor-pointer">Skip Weekends</Label>
-                      <p className="text-[10px] text-muted-foreground">No Sat & Sun delivery</p>
+                  <div className={`p-3 rounded-lg border ${editFormData.free_trial ? 'border-green-500 bg-green-500/5' : 'bg-muted/30'}`}>
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <Label className="text-sm cursor-pointer">Free Trial</Label>
+                        <p className="text-[10px] text-muted-foreground">
+                          {editFormData.free_trial 
+                            ? `${editFormData.trial_days}-day trial (service stops after expiry)` 
+                            : 'Regular paid subscription'}
+                        </p>
+                      </div>
+                      <Switch
+                        checked={editFormData.free_trial}
+                        onCheckedChange={(c) => setEditFormData({ 
+                          ...editFormData, 
+                          free_trial: c, 
+                          isPaid: c ? false : editFormData.isPaid 
+                        })}
+                      />
                     </div>
-                    <Switch checked={editFormData.skip_weekends} onCheckedChange={(c) => setEditFormData({ ...editFormData, skip_weekends: c })} />
+                    {editFormData.free_trial && (
+                      <div className="mt-3 space-y-2">
+                        <div className="flex items-center gap-2">
+                          <Label className="text-xs text-muted-foreground whitespace-nowrap">Trial Duration:</Label>
+                          <Select value={String(editFormData.trial_days)} onValueChange={(v) => setEditFormData({ ...editFormData, trial_days: parseInt(v) })}>
+                            <SelectTrigger className="h-8 w-28"><SelectValue /></SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="1">1 day</SelectItem>
+                              <SelectItem value="3">3 days</SelectItem>
+                              <SelectItem value="5">5 days</SelectItem>
+                              <SelectItem value="7">7 days</SelectItem>
+                              <SelectItem value="14">14 days</SelectItem>
+                              <SelectItem value="30">30 days</SelectItem>
+                            </SelectContent>
+                          </Select>
+                        </div>
+                        <div className="grid grid-cols-2 gap-3">
+                          <div className="space-y-1">
+                            <Label className="text-xs">Trial Start Date</Label>
+                            <Input
+                              type="date"
+                              value={editFormData.joining_date ? editFormData.joining_date.toISOString().split('T')[0] : ''}
+                              onChange={(e) => {
+                                const newDate = new Date(e.target.value);
+                                setEditFormData({ ...editFormData, joining_date: newDate });
+                              }}
+                              className="h-8"
+                            />
+                          </div>
+                          <div className="space-y-1">
+                            <Label className="text-xs">Trial End Date</Label>
+                            <Input
+                              type="date"
+                              value={editFormData.joining_date ? new Date(new Date(editFormData.joining_date).setDate(new Date(editFormData.joining_date).getDate() + editFormData.trial_days)).toISOString().split('T')[0] : ''}
+                              disabled
+                              className="h-8 bg-muted"
+                            />
+                          </div>
+                        </div>
+                      </div>
+                    )}
                   </div>
                 </div>
-                <div className={`p-3 rounded-lg border ${editFormData.free_trial ? 'border-green-500 bg-green-500/5' : 'bg-muted/30'}`}>
-                  <div className="flex items-center justify-between">
-                    <div>
-                      <Label className="text-sm cursor-pointer">Free Trial</Label>
-                      <p className="text-[10px] text-muted-foreground">
-                        {editFormData.free_trial 
-                          ? `${editFormData.trial_days}-day trial (service stops after expiry)` 
-                          : 'Regular paid subscription'}
-                      </p>
-                    </div>
-                    <Switch
-                      checked={editFormData.free_trial}
-                      onCheckedChange={(c) => setEditFormData({ 
-                        ...editFormData, 
-                        free_trial: c, 
-                        isPaid: c ? false : editFormData.isPaid 
-                      })}
-                    />
-                  </div>
-                  {editFormData.free_trial && (
-                    <div className="mt-3 space-y-2">
-                      <div className="flex items-center gap-2">
-                        <Label className="text-xs text-muted-foreground whitespace-nowrap">Trial Duration:</Label>
-                        <Select value={String(editFormData.trial_days)} onValueChange={(v) => setEditFormData({ ...editFormData, trial_days: parseInt(v) })}>
-                          <SelectTrigger className="h-8 w-28"><SelectValue /></SelectTrigger>
-                          <SelectContent>
-                            <SelectItem value="1">1 day</SelectItem>
-                            <SelectItem value="3">3 days</SelectItem>
-                            <SelectItem value="5">5 days</SelectItem>
-                            <SelectItem value="7">7 days</SelectItem>
-                            <SelectItem value="14">14 days</SelectItem>
-                            <SelectItem value="30">30 days</SelectItem>
-                          </SelectContent>
-                        </Select>
-                      </div>
-                      <div className="grid grid-cols-2 gap-3">
-                        <div className="space-y-1">
-                          <Label className="text-xs">Trial Start Date</Label>
-                          <Input
-                            type="date"
-                            value={editFormData.joining_date ? editFormData.joining_date.toISOString().split('T')[0] : ''}
-                            onChange={(e) => {
-                              const newDate = new Date(e.target.value);
-                              setEditFormData({ ...editFormData, joining_date: newDate });
-                            }}
-                            className="h-8"
-                          />
-                        </div>
-                        <div className="space-y-1">
-                          <Label className="text-xs">Trial End Date</Label>
-                          <Input
-                            type="date"
-                            value={editFormData.joining_date ? new Date(new Date(editFormData.joining_date).setDate(new Date(editFormData.joining_date).getDate() + editFormData.trial_days)).toISOString().split('T')[0] : ''}
-                            disabled
-                            className="h-8 bg-muted"
-                          />
-                        </div>
-                      </div>
-                    </div>
-                  )}
-                </div>
-              </div>
+              )}
 
               <div className="flex items-center justify-between p-4 rounded-lg border bg-muted/30">
                 <div className="space-y-0.5">

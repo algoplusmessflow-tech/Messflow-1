@@ -282,17 +282,36 @@ export function useStaff() {
     mutationFn: async ({ staffId, date, status }: { staffId: string; date: string; status: AttendanceStatus }) => {
       if (!user) throw new Error('Not authenticated');
       
-      const { data, error } = await supabase
+      // Check if a record exists for this staff member and date
+      const { data: existingRecords, error: fetchError } = await supabase
         .from('staff_attendance')
-        .upsert(
-          { staff_id: staffId, date, status, owner_id: user.id },
-          { onConflict: 'staff_id,date' }
-        )
-        .select()
-        .single();
+        .select('id')
+        .eq('staff_id', staffId)
+        .eq('date', date)
+        .eq('owner_id', user.id);
+        
+      if (fetchError) throw fetchError;
+      
+      if (existingRecords && existingRecords.length > 0) {
+        const { data, error } = await supabase
+          .from('staff_attendance')
+          .update({ status })
+          .eq('id', existingRecords[0].id)
+          .select()
+          .single();
+          
+        if (error) throw error;
+        return data;
+      } else {
+        const { data, error } = await supabase
+          .from('staff_attendance')
+          .insert({ staff_id: staffId, date, status, owner_id: user.id })
+          .select()
+          .single();
 
-      if (error) throw error;
-      return data;
+        if (error) throw error;
+        return data;
+      }
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['staff-attendance'] });

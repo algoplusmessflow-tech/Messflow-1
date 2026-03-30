@@ -7,6 +7,7 @@ import { useProfile } from '@/hooks/useProfile';
 import { ThemeToggle } from '@/components/ThemeToggle';
 import { Logo } from '@/components/Logo';
 import { NotificationCenter } from '@/components/NotificationCenter';
+import { ModeSwitcher } from '@/components/ModeSwitcher';
 
 import { useAppMode } from '@/contexts/ModeContext';
 
@@ -101,6 +102,10 @@ export function DesktopSidebar() {
             <NotificationCenter />
             <ThemeToggle />
           </div>
+        </div>
+
+        <div className="px-3 mb-4">
+          <ModeSwitcher />
         </div>
 
         <nav className="flex-1 px-2 space-y-1 overflow-y-auto">
