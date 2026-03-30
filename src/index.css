@@ -160,14 +160,16 @@ All colors MUST be HSL.
 
   html {
     overflow-x: hidden;
-    width: 100%;
+    width: 100vw;
+    max-width: 100%;
   }
 
   body {
     @apply bg-background text-foreground;
     -webkit-overflow-scrolling: touch;
     overflow-x: hidden;
-    width: 100%;
+    width: 100vw;
+    max-width: 100%;
     position: relative;
   }
 

@@ -1,0 +1,124 @@
+import { useParams, useNavigate } from "react-router-dom";
+import { useQuery } from "@tanstack/react-query";
+import { Printer, ArrowLeft } from "lucide-react";
+import { supabase } from "@/integrations/supabase/client";
+import { Button } from "@/components/ui/button";
+import { KotTicket, OrderItem } from "@/integrations/supabase/types";
+
+export default function PrintKOT() {
+  const { kotId } = useParams();
+  const navigate = useNavigate();
+
+  const { data: kotData, isLoading } = useQuery({
+    queryKey: ["kot_ticket", kotId],
+    queryFn: async () => {
+      const { data: kot, error: kotErr } = await supabase
+        .from("kot_tickets")
+        .select("*")
+        .eq("id", kotId)
+        .single();
+      if (kotErr) throw kotErr;
+      
+      const { data: items, error: itemsErr } = await supabase
+        .from("order_items")
+        .select("*")
+        .eq("kot_id", kotId);
+      if (itemsErr) throw itemsErr;
+      
+      return { kot: kot as KotTicket, items: items as OrderItem[] };
+    },
+    enabled: !!kotId
+  });
+
+  const handlePrint = () => {
+    window.print();
+  };
+
+  if (isLoading) return <div className="p-8 text-center text-muted-foreground">Loading KOT Data...</div>;
+
+  return (
+    <div className="min-h-screen bg-dashboard-background print:bg-white pb-20">
+      {/* Non-printable header */}
+      <div className="p-4 bg-card border-b flex justify-between items-center print:hidden shadow-sm sticky top-0 z-10">
+        <Button variant="ghost" onClick={() => navigate('/tables')} className="min-h-[44px] touch-manipulation">
+          <ArrowLeft className="w-5 h-5 mr-2" />
+          Back to Tables
+        </Button>
+        <Button onClick={handlePrint} className="min-h-[44px] touch-manipulation">
+          <Printer className="w-5 h-5 mr-2" />
+          Print Ticket
+        </Button>
+      </div>
+
+      {/* 80mm Print Container */}
+      <div className="print-container mx-auto mt-8 bg-white p-4 shadow-xl border border-gray-200 print:shadow-none print:border-0 print:m-0 print:p-0" style={{ maxWidth: "302px" }}>
+        <style>
+          {`
+            @media print {
+              @page {
+                size: 80mm auto;
+                margin: 0;
+              }
+              body {
+                background: white;
+                margin: 0;
+                padding: 0;
+                color: black;
+              }
+              .print\\:hidden { display: none !important; }
+              * {
+                -webkit-print-color-adjust: exact !important;
+                print-color-adjust: exact !important;
+              }
+            }
+          `}
+        </style>
+        
+        <div className="font-mono text-black space-y-4 pt-2 pb-8 px-2 max-w-[80mm]">
+          <div className="text-center pb-2 border-b-2 border-dashed border-black">
+            <h1 className="text-xl font-bold uppercase tracking-tight leading-none mb-1">Kitchen Ticket</h1>
+            <h2 className="text-2xl font-black">{kotData?.kot.ticket_number}</h2>
+            <p className="text-[11px] uppercase mt-1 tracking-wider">{new Date(kotData?.kot.created_at || "").toLocaleString()}</p>
+          </div>
+          
+          <div className="flex justify-between text-[13px] py-1 font-bold border-b-2 border-black">
+            <span className="uppercase">TBL: {kotData?.kot.table_name || 'N/A'}</span>
+            <span className="uppercase">{kotData?.kot.order_type?.replace('_', ' ') || 'N/A'}</span>
+          </div>
+
+          <div className="border-b-2 border-dashed border-black pb-2 min-h-[150px]">
+            <table className="w-full text-[13px]">
+              <thead>
+                <tr className="border-b border-black text-left">
+                  <th className="pb-1 w-8 uppercase">Qty</th>
+                  <th className="pb-1 uppercase">Item</th>
+                </tr>
+              </thead>
+              <tbody className="align-top">
+                {kotData?.items.map((item, idx) => (
+                  <tr key={idx} className="border-b border-gray-200 last:border-0">
+                    <td className="py-2.5 font-black text-base">{item.quantity}</td>
+                    <td className="py-2.5 pl-1 leading-snug">
+                      <div className="font-bold uppercase tracking-tight">{item.item_name}</div>
+                      {item.special_notes && (
+                        <div className="text-[11px] italic mt-1 font-semibold block border-l-[3px] border-black pl-1 ml-1 leading-snug">
+                          {item.special_notes}
+                        </div>
+                      )}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+
+          <div className="text-center pt-2 text-[10px] uppercase font-bold tracking-widest leading-none">
+            ----- End Of KOT -----
+            <br />
+            <span className="inline-block mt-1 font-normal lowercase tracking-normal text-[9px]">generated by SaaS</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}

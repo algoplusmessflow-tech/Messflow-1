@@ -10,6 +10,7 @@ import { SubscriptionBanner } from "@/components/SubscriptionBanner";
 import { BroadcastModal } from "@/components/BroadcastModal";
 import { LoadingSpinner } from "@/components/LoadingSpinner";
 import { ErrorBoundary } from "@/components/ErrorBoundary";
+import { ModeProvider } from "@/contexts/ModeContext";
 import { Suspense, lazy } from "react";
 
 // Lazy load pages
@@ -34,6 +35,11 @@ const DeliveryManagement = lazy(() => import("./pages/DeliveryManagement"));
 const DeliveryZones = lazy(() => import("./pages/DeliveryZones"));
 const NotFound = lazy(() => import("./pages/NotFound"));
 const Sales = lazy(() => import("./pages/Sales"));
+const Tables = lazy(() => import("./pages/Tables"));
+const OrderTaking = lazy(() => import("./pages/OrderTaking"));
+const PrintKOT = lazy(() => import("./pages/PrintKOT"));
+const Orders = lazy(() => import("./pages/Orders"));
+const Tokens = lazy(() => import("./pages/Tokens"));
 
 // Regular imports for new pages (to avoid lazy loading issues)
 import Invoices from "./pages/Invoices";
@@ -52,10 +58,11 @@ const App = () => (
   <ErrorBoundary>
     <QueryClientProvider client={queryClient}>
       <AuthProvider>
-        <TooltipProvider>
-          <Toaster />
-          <Sonner />
-          <BrowserRouter>
+        <ModeProvider>
+          <TooltipProvider>
+            <Toaster />
+            <Sonner />
+            <BrowserRouter>
             <Suspense fallback={<LoadingSpinner />}>
               <Routes>
               <Route path="/" element={<PublicHome />} />
@@ -210,6 +217,17 @@ const App = () => (
                 }
               />
               <Route
+                path="/tables"
+                element={
+                  <ProtectedRoute>
+                    <SubscriptionGuard>
+                      <SubscriptionBanner />
+                      <Tables />
+                    </SubscriptionGuard>
+                  </ProtectedRoute>
+                }
+              />
+              <Route
                 path="/kitchen-prep"
                 element={
                   <ProtectedRoute>
@@ -231,6 +249,42 @@ const App = () => (
                   </ProtectedRoute>
                 }
               />
+              <Route
+                path="/orders"
+                element={
+                  <ProtectedRoute>
+                    <SubscriptionGuard>
+                      <SubscriptionBanner />
+                      <Orders />
+                    </SubscriptionGuard>
+                  </ProtectedRoute>
+                }
+              />
+              <Route
+                path="/tokens"
+                element={
+                  <ProtectedRoute>
+                    <SubscriptionGuard>
+                      <SubscriptionBanner />
+                      <Tokens />
+                    </SubscriptionGuard>
+                  </ProtectedRoute>
+                }
+              />
+              {/* Restaurant order flow */}
+              <Route path="/order/new" element={
+                <ProtectedRoute>
+                  <SubscriptionGuard>
+                    <SubscriptionBanner />
+                    <OrderTaking />
+                  </SubscriptionGuard>
+                </ProtectedRoute>
+              } />
+              <Route path="/kot/print/:kotId" element={
+                <ProtectedRoute>
+                  <PrintKOT />
+                </ProtectedRoute>
+              } />
               <Route
                 path="/zones"
                 element={
@@ -266,6 +320,7 @@ const App = () => (
           </Suspense>
         </BrowserRouter>
       </TooltipProvider>
+      </ModeProvider>
     </AuthProvider>
   </QueryClientProvider>
   </ErrorBoundary>

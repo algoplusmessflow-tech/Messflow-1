@@ -14,9 +14,25 @@ export type Staff = Database['public']['Tables']['staff']['Row'];
 export type StaffInsert = Database['public']['Tables']['staff']['Insert'];
 export type StaffUpdate = Database['public']['Tables']['staff']['Update'];
 
-export type DeliveryCompletion = Database['public']['Tables']['delivery_completions']['Row'];
-export type DeliveryCompletionInsert = Database['public']['Tables']['delivery_completions']['Insert'];
-export type DeliveryCompletionUpdate = Database['public']['Tables']['delivery_completions']['Update'];
+export type RestaurantTable = Database['public']['Tables']['restaurant_tables']['Row'];
+export type RestaurantTableInsert = Database['public']['Tables']['restaurant_tables']['Insert'];
+export type RestaurantTableUpdate = Database['public']['Tables']['restaurant_tables']['Update'];
+
+export type Order = Database['public']['Tables']['orders']['Row'];
+export type OrderInsert = Database['public']['Tables']['orders']['Insert'];
+export type OrderUpdate = Database['public']['Tables']['orders']['Update'];
+
+export type OrderItem = Database['public']['Tables']['order_items']['Row'];
+export type OrderItemInsert = Database['public']['Tables']['order_items']['Insert'];
+export type OrderItemUpdate = Database['public']['Tables']['order_items']['Update'];
+
+export type KotTicket = Database['public']['Tables']['kot_tickets']['Row'];
+export type KotTicketInsert = Database['public']['Tables']['kot_tickets']['Insert'];
+export type KotTicketUpdate = Database['public']['Tables']['kot_tickets']['Update'];
+
+export type MenuItem = Database['public']['Tables']['menu_items']['Row'];
+export type MenuItemInsert = Database['public']['Tables']['menu_items']['Insert'];
+export type MenuItemUpdate = Database['public']['Tables']['menu_items']['Update'];
 
 export type Database = {
   // Allows to automatically instantiate createClient with right options
@@ -459,10 +475,266 @@ export type Database = {
           },
         ]
       }
+      menu_items: {
+        Row: {
+          category: string | null
+          created_at: string | null
+          description: string | null
+          id: string
+          image_url: string | null
+          is_available: boolean | null
+          is_veg: boolean | null
+          name: string
+          owner_id: string
+          preparation_time: number | null
+          price: number
+          sort_order: number | null
+        }
+        Insert: {
+          category?: string | null
+          created_at?: string | null
+          description?: string | null
+          id?: string
+          image_url?: string | null
+          is_available?: boolean | null
+          is_veg?: boolean | null
+          name: string
+          owner_id?: string
+          preparation_time?: number | null
+          price?: number
+          sort_order?: number | null
+        }
+        Update: {
+          category?: string | null
+          created_at?: string | null
+          description?: string | null
+          id?: string
+          image_url?: string | null
+          is_available?: boolean | null
+          is_veg?: boolean | null
+          name?: string
+          owner_id?: string
+          preparation_time?: number | null
+          price?: number
+          sort_order?: number | null
+        }
+        Relationships: []
+      }
+      kot_tickets: {
+        Row: {
+          created_at: string | null
+          id: string
+          items_summary: string | null
+          kot_type: string | null
+          order_id: string
+          order_type: string | null
+          owner_id: string
+          pax: number | null
+          printed: boolean | null
+          status: string | null
+          table_name: string | null
+          ticket_number: string
+          updated_at: string | null
+          waiter_name: string | null
+        }
+        Insert: {
+          created_at?: string | null
+          id?: string
+          items_summary?: string | null
+          kot_type?: string | null
+          order_id: string
+          order_type?: string | null
+          owner_id?: string
+          pax?: number | null
+          printed?: boolean | null
+          status?: string | null
+          table_name?: string | null
+          ticket_number: string
+          updated_at?: string | null
+          waiter_name?: string | null
+        }
+        Update: {
+          created_at?: string | null
+          id?: string
+          items_summary?: string | null
+          kot_type?: string | null
+          order_id?: string
+          order_type?: string | null
+          owner_id?: string
+          pax?: number | null
+          printed?: boolean | null
+          status?: string | null
+          table_name?: string | null
+          ticket_number?: string
+          updated_at?: string | null
+          waiter_name?: string | null
+        }
+        Relationships: []
+      }
+      order_items: {
+        Row: {
+          created_at: string | null
+          id: string
+          item_category: string | null
+          item_name: string
+          kot_id: string | null
+          order_id: string
+          quantity: number | null
+          special_notes: string | null
+          status: string | null
+          total_price: number
+          unit_price: number
+        }
+        Insert: {
+          created_at?: string | null
+          id?: string
+          item_category?: string | null
+          item_name: string
+          kot_id?: string | null
+          order_id: string
+          quantity?: number | null
+          special_notes?: string | null
+          status?: string | null
+          total_price: number
+          unit_price: number
+        }
+        Update: {
+          created_at?: string | null
+          id?: string
+          item_category?: string | null
+          item_name?: string
+          kot_id?: string | null
+          order_id?: string
+          quantity?: number | null
+          special_notes?: string | null
+          status?: string | null
+          total_price?: number
+          unit_price?: number
+        }
+        Relationships: []
+      }
+      orders: {
+        Row: {
+          completed_at: string | null
+          created_at: string | null
+          customer_name: string | null
+          customer_phone: string | null
+          discount_amount: number | null
+          id: string
+          member_id: string | null
+          notes: string | null
+          order_number: string
+          order_type: string | null
+          owner_id: string
+          pax: number | null
+          payment_method: string | null
+          payment_status: string | null
+          status: string | null
+          subtotal: number | null
+          table_id: string | null
+          tax_amount: number | null
+          tax_rate: number | null
+          total: number | null
+          updated_at: string | null
+          waiter_id: string | null
+        }
+        Insert: {
+          completed_at?: string | null
+          created_at?: string | null
+          customer_name?: string | null
+          customer_phone?: string | null
+          discount_amount?: number | null
+          id?: string
+          member_id?: string | null
+          notes?: string | null
+          order_number: string
+          order_type?: string | null
+          owner_id?: string
+          pax?: number | null
+          payment_method?: string | null
+          payment_status?: string | null
+          status?: string | null
+          subtotal?: number | null
+          table_id?: string | null
+          tax_amount?: number | null
+          tax_rate?: number | null
+          total?: number | null
+          updated_at?: string | null
+          waiter_id?: string | null
+        }
+        Update: {
+          completed_at?: string | null
+          created_at?: string | null
+          customer_name?: string | null
+          customer_phone?: string | null
+          discount_amount?: number | null
+          id?: string
+          member_id?: string | null
+          notes?: string | null
+          order_number?: string
+          order_type?: string | null
+          owner_id?: string
+          pax?: number | null
+          payment_method?: string | null
+          payment_status?: string | null
+          status?: string | null
+          subtotal?: number | null
+          table_id?: string | null
+          tax_amount?: number | null
+          tax_rate?: number | null
+          total?: number | null
+          updated_at?: string | null
+          waiter_id?: string | null
+        }
+        Relationships: []
+      }
+      restaurant_tables: {
+        Row: {
+          capacity: number | null
+          created_at: string | null
+          id: string
+          is_active: boolean | null
+          name: string
+          owner_id: string
+          qr_code: string | null
+          sort_order: number | null
+          status: string | null
+          updated_at: string | null
+          zone: string | null
+        }
+        Insert: {
+          capacity?: number | null
+          created_at?: string | null
+          id?: string
+          is_active?: boolean | null
+          name: string
+          owner_id?: string
+          qr_code?: string | null
+          sort_order?: number | null
+          status?: string | null
+          updated_at?: string | null
+          zone?: string | null
+        }
+        Update: {
+          capacity?: number | null
+          created_at?: string | null
+          id?: string
+          is_active?: boolean | null
+          name?: string
+          owner_id?: string
+          qr_code?: string | null
+          sort_order?: number | null
+          status?: string | null
+          updated_at?: string | null
+          zone?: string | null
+        }
+        Relationships: []
+      }
       profiles: {
         Row: {
           business_name: string
           business_slug: string | null
+          business_type: Database["public"]["Enums"]["business_type"]
           company_address: string | null
           company_logo_url: string | null
           created_at: string
@@ -490,6 +762,7 @@ export type Database = {
         Insert: {
           business_name: string
           business_slug?: string | null
+          business_type?: Database["public"]["Enums"]["business_type"]
           company_address?: string | null
           company_logo_url?: string | null
           created_at?: string
@@ -517,6 +790,7 @@ export type Database = {
         Update: {
           business_name?: string
           business_slug?: string | null
+          business_type?: Database["public"]["Enums"]["business_type"]
           company_address?: string | null
           company_logo_url?: string | null
           created_at?: string
@@ -1068,10 +1342,23 @@ export type Database = {
         }
         Returns: boolean
       }
+      next_order_number: {
+        Args: {
+          p_owner_id: string
+        }
+        Returns: string
+      }
+      next_kot_number: {
+        Args: {
+          p_owner_id: string
+        }
+        Returns: string
+      }
     }
     Enums: {
       app_role: "super_admin" | "mess_owner"
       attendance_status: "present" | "absent" | "half_day"
+      business_type: "mess" | "restaurant" | "canteen" | "cloud_kitchen"
       expense_category:
       | "groceries"
       | "utilities"

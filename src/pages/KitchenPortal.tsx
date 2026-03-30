@@ -9,13 +9,15 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogD
 import { Label } from '@/components/ui/label';
 import { Switch } from '@/components/ui/switch';
 import { ScrollArea, ScrollBar } from '@/components/ui/scroll-area';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 import { format, addDays, subDays } from 'date-fns';
 import {
   ChefHat, UtensilsCrossed, Leaf, Beef, ChevronLeft, ChevronRight,
-  MapPin, Users, Loader2, Wheat, Printer, Download, Package, User, Calendar, Clock, Eye, ArrowRight, RefreshCw, Smartphone, Monitor, AlertTriangle, Plus, Trash2, CheckCircle
+  MapPin, Users, Loader2, Wheat, Printer, Download, Package, User, Calendar, Clock, Eye, ArrowRight, RefreshCw, Smartphone, Monitor, AlertTriangle, Plus, Trash2, CheckCircle, Ticket
 } from 'lucide-react';
+import { KitchenKDS } from '@/components/kot/KitchenKDS';
 
 type PrepMember = {
   id: string;
@@ -43,6 +45,7 @@ export default function KitchenPortal() {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [loading, setLoading] = useState(true);
   const [businessName, setBusinessName] = useState('');
+  const [activeTab, setActiveTab] = useState<'prep' | 'kot'>('prep');
   const [ownerId, setOwnerId] = useState<string | null>(null);
   const [selectedDate, setSelectedDate] = useState(new Date());
   const [members, setMembers] = useState<PrepMember[]>([]);
@@ -477,6 +480,34 @@ export default function KitchenPortal() {
         </div>
       </header>
 
+      <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as 'prep' | 'kot')} className="flex-1">
+        {/* Tab switcher bar */}
+        <div className="sticky top-[65px] z-40 bg-card/90 backdrop-blur-md border-b px-4">
+          <TabsList className="h-12 gap-1 bg-transparent">
+            <TabsTrigger value="prep" className="min-h-[44px] px-5 font-semibold data-[state=active]:bg-primary data-[state=active]:text-primary-foreground rounded-xl touch-manipulation">
+              <ChefHat className="h-4 w-4 mr-2" />
+              Prep &amp; Inventory
+            </TabsTrigger>
+            <TabsTrigger value="kot" className="min-h-[44px] px-5 font-semibold data-[state=active]:bg-primary data-[state=active]:text-primary-foreground rounded-xl touch-manipulation">
+              <Ticket className="h-4 w-4 mr-2" />
+              Restaurant KOT
+            </TabsTrigger>
+          </TabsList>
+        </div>
+
+        {/* KOT Display System tab — full-screen dark mode */}
+        <TabsContent value="kot" className="mt-0 data-[state=active]:flex data-[state=active]:flex-col">
+          {ownerId ? (
+            <KitchenKDS ownerId={ownerId} />
+          ) : (
+            <div className="flex items-center justify-center py-32 text-muted-foreground">
+              <Loader2 className="h-6 w-6 animate-spin mr-2" /> Loading KDS…
+            </div>
+          )}
+        </TabsContent>
+
+        {/* Prep & Inventory tab — existing content */}
+        <TabsContent value="prep" className="mt-0">
       <main className="max-w-[1600px] mx-auto px-4 py-6 space-y-4">
         {/* Top Action Bar */}
         <div className="flex items-center gap-2">
@@ -743,6 +774,8 @@ export default function KitchenPortal() {
           <CardContent className="pt-0" />
         </Card>
       </main>
+        </TabsContent>
+      </Tabs>
 
       {/* Request Dialog — triggered from top action bar */}
       <Dialog open={showRequestDialog} onOpenChange={setShowRequestDialog}>

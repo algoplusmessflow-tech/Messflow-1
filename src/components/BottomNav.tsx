@@ -10,30 +10,96 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 
-const mainNavItems = [
-  { to: '/dashboard', icon: Home, label: 'Home' },
-  { to: '/members', icon: Users, label: 'Members' },
-  { to: '/menu', icon: UtensilsCrossed, label: 'Menu' },
-  { to: '/expenses', icon: Receipt, label: 'Expenses' },
-];
+import { useAppMode } from '@/contexts/ModeContext';
 
-const moreNavItems = [
-  { to: '/inventory', icon: Package, label: 'Inventory' },
-  { to: '/staff', icon: UserCog, label: 'Staff' },
-  { to: '/delivery', icon: Truck, label: 'Delivery' },
-  { to: '/zones', icon: MapPin, label: 'Zones' },
-  { to: '/kitchen-prep', icon: ChefHat, label: 'Kitchen Prep' },
-  { to: '/invoices', icon: FileText, label: 'Invoices' },
-  { to: '/reports', icon: FileBarChart, label: 'Reports' },
-  { to: '/sales', icon: UserPlus, label: 'Sales Team' },
-  { to: '/referrals', icon: Gift, label: 'Referrals' },
-  { to: '/pricing', icon: CreditCard, label: 'Pricing' },
-  { to: '/settings', icon: Settings, label: 'Settings' },
-];
+const getMainNavItems = (mode: string) => {
+  switch (mode) {
+    case 'restaurant':
+      return [
+        { to: '/dashboard', icon: Home, label: 'Home' },
+        { to: '/tables', icon: UtensilsCrossed, label: 'Tables' }, // Mock route
+        { to: '/orders', icon: Receipt, label: 'Orders' }, // Mock route
+        { to: '/kitchen-prep', icon: ChefHat, label: 'Kitchen' },
+      ];
+    case 'canteen':
+      return [
+        { to: '/dashboard', icon: Home, label: 'Home' },
+        { to: '/members', icon: Users, label: 'Members' },
+        { to: '/menu', icon: UtensilsCrossed, label: 'Menu' },
+        { to: '/tokens', icon: Receipt, label: 'Tokens' }, // Mock route
+      ];
+    case 'cloud_kitchen':
+      return [
+        { to: '/dashboard', icon: Home, label: 'Home' },
+        { to: '/orders', icon: Receipt, label: 'Orders' }, // Mock route
+        { to: '/kitchen-prep', icon: ChefHat, label: 'Kitchen' },
+        { to: '/inventory', icon: Package, label: 'Inventory' },
+      ];
+    case 'mess':
+    default:
+      return [
+        { to: '/dashboard', icon: Home, label: 'Home' },
+        { to: '/members', icon: Users, label: 'Members' },
+        { to: '/menu', icon: UtensilsCrossed, label: 'Menu' },
+        { to: '/expenses', icon: Receipt, label: 'Expenses' },
+      ];
+  }
+};
+
+const getMoreNavItems = (mode: string) => {
+  const commonEnd = [
+    { to: '/reports', icon: FileBarChart, label: 'Reports' },
+    { to: '/sales', icon: UserPlus, label: 'Sales Team' },
+    { to: '/referrals', icon: Gift, label: 'Referrals' },
+    { to: '/pricing', icon: CreditCard, label: 'Pricing' },
+    { to: '/settings', icon: Settings, label: 'Settings' },
+  ];
+
+  switch (mode) {
+    case 'restaurant':
+      return [
+        { to: '/inventory', icon: Package, label: 'Inventory' },
+        { to: '/staff', icon: UserCog, label: 'Staff' },
+        { to: '/invoices', icon: FileText, label: 'Invoices' },
+        ...commonEnd,
+      ];
+    case 'canteen':
+      return [
+        { to: '/inventory', icon: Package, label: 'Inventory' },
+        { to: '/staff', icon: UserCog, label: 'Staff' },
+        { to: '/kitchen-prep', icon: ChefHat, label: 'Kitchen Prep' },
+        { to: '/invoices', icon: FileText, label: 'Invoices' },
+        ...commonEnd,
+      ];
+    case 'cloud_kitchen':
+      return [
+        { to: '/delivery', icon: Truck, label: 'Delivery' },
+        { to: '/zones', icon: MapPin, label: 'Zones' },
+        { to: '/staff', icon: UserCog, label: 'Staff' },
+        { to: '/expenses', icon: Receipt, label: 'Expenses' },
+        { to: '/invoices', icon: FileText, label: 'Invoices' },
+        ...commonEnd,
+      ];
+    case 'mess':
+    default:
+      return [
+        { to: '/inventory', icon: Package, label: 'Inventory' },
+        { to: '/staff', icon: UserCog, label: 'Staff' },
+        { to: '/delivery', icon: Truck, label: 'Delivery' },
+        { to: '/zones', icon: MapPin, label: 'Zones' },
+        { to: '/kitchen-prep', icon: ChefHat, label: 'Kitchen Prep' },
+        { to: '/invoices', icon: FileText, label: 'Invoices' },
+        ...commonEnd,
+      ];
+  }
+};
 
 export function BottomNav() {
   const { signOut } = useAuth();
   const navigate = useNavigate();
+  const { mode } = useAppMode();
+  const mainNavItems = getMainNavItems(mode);
+  const moreNavItems = getMoreNavItems(mode);
 
   const handleSignOut = async () => {
     await signOut();

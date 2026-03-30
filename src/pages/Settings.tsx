@@ -13,7 +13,7 @@ import { GCC_CURRENCIES, CurrencyCode } from '@/lib/currencies';
 import { toast } from 'sonner';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/lib/auth';
-import { useQueryClient } from '@tanstack/react-query';
+import { useQueryClient, useMutation } from '@tanstack/react-query';
 import { 
   Building2, 
   Receipt, 
@@ -94,7 +94,10 @@ function GoogleDriveCard({ userId }: { userId: string }) {
           setGoogleEmail(session?.user?.email || null);
           setGoogleAvatar(session?.user?.user_metadata?.avatar_url || null);
         }
-        const gd = await import('@/lib/google-drive');
+        const gd = await import('@/lib/google-drive').catch(err => {
+          console.error("Failed to import google-drive:", err);
+          throw err; 
+        });
         const connected = await gd.isGoogleDriveConnected(userId);
         // Auto-enable Drive for Google users
         if ((isGoogleUser || hasToken) && !connected) {
@@ -108,8 +111,12 @@ function GoogleDriveCard({ userId }: { userId: string }) {
           const quota = await gd.getGoogleDriveStorageInfo();
           if (quota) setDriveQuota(quota);
         }
-      } catch {}
-      setChecking(false);
+      } catch (error) {
+        console.error("Error checking Google Drive connection:", error);
+        // Optionally set an error state or show a toast to the user
+      } finally {
+        setChecking(false);
+      }
     };
     check();
   }, [userId]);
@@ -122,7 +129,10 @@ function GoogleDriveCard({ userId }: { userId: string }) {
       setDriveEnabled(true);
       queryClient.invalidateQueries({ queryKey: ['profile'] });
       toast.success('Google Drive enabled!');
-    } catch (err: any) { toast.error(err.message || 'Failed'); }
+    } catch (err: any) { 
+      console.error("Failed to enable Google Drive:", err);
+      toast.error(err.message || 'Failed to enable Google Drive'); 
+    }
     finally { setEnabling(false); }
   };
 
@@ -133,7 +143,10 @@ function GoogleDriveCard({ userId }: { userId: string }) {
       setDriveEnabled(false);
       queryClient.invalidateQueries({ queryKey: ['profile'] });
       toast.success('Switched to default storage.');
-    } catch {}
+    } catch (err: any) {
+      console.error("Failed to disable Google Drive:", err);
+      toast.error('Failed to switch storage.');
+    }
   };
 
   const handleConnectGoogle = async () => {
@@ -165,7 +178,9 @@ function GoogleDriveCard({ userId }: { userId: string }) {
     try {
       const { disconnectGoogleDrive } = await import('@/lib/google-drive');
       await disconnectGoogleDrive(userId);
-    } catch {}
+    } catch (err: any) {
+      console.error("Failed to disconnect Google account:", err);
+    }
     setDriveEnabled(false);
     setGoogleAvailable(false);
     setGoogleEmail(null);
@@ -178,7 +193,9 @@ function GoogleDriveCard({ userId }: { userId: string }) {
   // Check for existing backup sheet URL
   useEffect(() => {
     if (!userId || !driveEnabled) return;
-    import('@/lib/google-sheets-backup').then((m) => m.getBackupSheetUrl(userId)).then(setLastBackupUrl).catch(() => {});
+    import('@/lib/google-sheets-backup').then((m) => m.getBackupSheetUrl(userId)).then(setLastBackupUrl).catch(err => {
+      console.error("Failed to get backup sheet URL:", err);
+    });
   }, [userId, driveEnabled]);
 
   const handleBackup = async () => {
@@ -189,6 +206,7 @@ function GoogleDriveCard({ userId }: { userId: string }) {
       setLastBackupUrl(result.spreadsheetUrl);
       toast.success(`Backed up ${result.memberCount} members to Google Sheets!`);
     } catch (err: any) {
+      console.error("Backup failed:", err);
       toast.error(err.message || 'Backup failed');
     } finally { setBackingUp(false); }
   };
@@ -320,6 +338,8 @@ function GoogleDriveCard({ userId }: { userId: string }) {
   );
 }
 
+
+
 export default function Settings() {
   const { user } = useAuth();
   const { profile } = useProfile();
@@ -336,6 +356,7 @@ export default function Settings() {
   // Company settings
   const [companyAddress, setCompanyAddress] = useState('');
   const [currency, setCurrency] = useState<CurrencyCode>('AED');
+  const [businessMode, setBusinessMode] = useState<'mess' | 'restaurant' | 'canteen' | 'cloud_kitchen'>('mess');
   const [savingCompany, setSavingCompany] = useState(false);
 
   // Map API
@@ -400,6 +421,7 @@ export default function Settings() {
       setCustomMapBaseUrl((profile as any).custom_map_base_url || ''); // load custom base url
       setCompanyAddress((profile as any).company_address || '');
       setCurrency(((profile as any).currency || 'AED') as CurrencyCode);
+      setBusinessMode((profile as any).business_type || 'mess');
       
       const appUrl = window.location.origin;
       const businessSlug = (profile as any).business_slug || generateSlug(profile.business_name);
@@ -438,7 +460,7 @@ export default function Settings() {
       if (data) {
         setInvoicePrefix(data.invoice_prefix || 'INV');
         setInvoiceCompanyAddress(data.company_address || '');
-        setInvoiceFooter((profile as any)?.company_address || '');
+        setInvoiceFooter(data.footer_message || ''); // Use correct field
       }
     };
     fetchInvoiceSettings();
@@ -659,6 +681,7 @@ export default function Settings() {
   const handleCopySalesLink = async () => {
     try {
       await navigator.clipboard.writeText(salesPortalLink);
+      setCopiedSalesLink(true);
       toast.success('Sales portal link copied!');
       setTimeout(() => setCopiedSalesLink(false), 2000);
     } catch (error) {
@@ -676,6 +699,7 @@ export default function Settings() {
           owner_id: user.id,
           invoice_prefix: invoicePrefix,
           company_address: invoiceCompanyAddress,
+          footer_message: invoiceFooter, // Use correct field
           updated_at: new Date().toISOString(),
         }, { onConflict: 'owner_id' });
 
@@ -686,6 +710,32 @@ export default function Settings() {
     } finally {
       setSavingInvoiceSettings(false);
     }
+  };
+
+  // Mutation for updating profile
+  const updateProfile = useMutation({
+    mutationFn: async (updates: { business_type?: 'mess' | 'restaurant' | 'canteen' | 'cloud_kitchen' }) => {
+      if (!user) throw new Error('User not authenticated');
+      const { error } = await supabase
+        .from('profiles')
+        .update(updates)
+        .eq('user_id', user.id);
+      if (error) throw error;
+      return updates;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['profile'] });
+      toast.success('Business mode updated!');
+    },
+    onError: (error: any) => {
+      toast.error('Failed to update business mode: ' + error.message);
+    }
+  });
+
+  // Handler for business mode change using the mutation
+  const handleBusinessModeChange = (newMode: 'mess' | 'restaurant' | 'canteen' | 'cloud_kitchen') => {
+    setBusinessMode(newMode);
+    updateProfile.mutate({ business_type: newMode });
   };
 
   return (
@@ -755,8 +805,26 @@ export default function Settings() {
                       <Info className="h-3 w-3" />
                       Business name cannot be changed after signup
                     </p>
+                    <Label className="mt-4">Business Mode</Label>
+                    <Select value={businessMode} onValueChange={(v) => {
+                      setBusinessMode(v);
+                      updateProfile.mutate({ business_type: v });
+                    }}>
+                      <SelectTrigger>
+                        <SelectValue placeholder="Select mode" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="mess">Mess Mode (Subscriptions & Delivery)</SelectItem>
+                        <SelectItem value="restaurant">Restaurant Mode (Tables & Realtime KOT)</SelectItem>
+                        <SelectItem value="canteen">Canteen Mode (Pre-paid Tokens & Bulk)</SelectItem>
+                      </SelectContent>
+                    </Select>
+                    <p className="text-xs text-muted-foreground flex items-center gap-1 mt-1">
+                      <Info className="h-3 w-3" />
+                      Changing your mode will instantly update your dashboard and navigation to match your business type.
+                    </p>
                   </div>
-
+                  
                   <div className="space-y-2">
                     <Label>Business Address</Label>
                     <Textarea
@@ -766,7 +834,7 @@ export default function Settings() {
                       rows={3}
                     />
                   </div>
-
+                  
                   <div className="space-y-2">
                     <Label>Currency</Label>
                     <Select value={currency} onValueChange={(v) => setCurrency(v as CurrencyCode)}>
@@ -846,7 +914,7 @@ export default function Settings() {
                       </Button>
                     </div>
                   </div>
-                  <div className="space-y-2">
+                  <div className="space-y-2 col-span-2">
                     <Label className="text-sm font-medium">Customer Registration Link</Label>
                     <div className="flex gap-2">
                       <Input
