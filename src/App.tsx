@@ -43,6 +43,7 @@ const PrintKOT = lazy(() => import("./pages/PrintKOT"));
 const Orders = lazy(() => import("./pages/Orders"));
 const Tokens = lazy(() => import("./pages/Tokens"));
 const RestaurantSettings = lazy(() => import("./pages/RestaurantSettings"));
+const RestaurantMenu = lazy(() => import("./pages/RestaurantMenu"));
 
 // Regular imports for new pages (to avoid lazy loading issues)
 import Invoices from "./pages/Invoices";
@@ -251,6 +252,17 @@ const App = () => (
                     <SubscriptionGuard>
                       <SubscriptionBanner />
                       <Tables />
+                    </SubscriptionGuard>
+                  </ProtectedRoute>
+                }
+              />
+              <Route
+                path="/restaurant-menu"
+                element={
+                  <ProtectedRoute>
+                    <SubscriptionGuard>
+                      <SubscriptionBanner />
+                      <RestaurantMenu />
                     </SubscriptionGuard>
                   </ProtectedRoute>
                 }

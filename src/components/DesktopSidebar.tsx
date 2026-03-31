@@ -21,6 +21,7 @@ const commonEnd = [
 const navigationMap: Record<string, any[]> = {
   restaurant: [
     { to: '/tables', icon: UtensilsCrossed, label: 'Tables' },
+    { to: '/restaurant-menu', icon: UtensilsCrossed, label: 'Menu' },
     { to: '/orders', icon: Receipt, label: 'Orders (POS)' },
     { to: '/kitchen-prep', icon: ChefHat, label: 'Kitchen (KDS)' },
     { to: '/invoices', icon: FileText, label: 'Invoices' },

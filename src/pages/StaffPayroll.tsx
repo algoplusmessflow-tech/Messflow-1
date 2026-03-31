@@ -21,6 +21,7 @@ import {
 } from '@/components/ui/alert-dialog';
 import { useStaff, STAFF_ROLES, StaffRole, AttendanceStatus } from '@/hooks/useStaff';
 import { useCurrency } from '@/hooks/useCurrency';
+import { useAppMode } from '@/contexts/ModeContext';
 import { formatDate, toDateInputValue } from '@/lib/format';
 import { Plus, Phone, Loader2, UserCheck, Calculator, Banknote, CheckCircle2, DollarSign, UserX, History, RotateCcw, Copy, Building2, Eye, EyeOff } from 'lucide-react';
 import { format } from 'date-fns';
@@ -28,6 +29,7 @@ import { SalaryHistoryModal } from '@/components/SalaryHistoryModal';
 import { toast } from 'sonner';
 
 export default function StaffPayroll() {
+  const { mode } = useAppMode();
   const { 
     staff, 
     isLoading, 
@@ -43,7 +45,6 @@ export default function StaffPayroll() {
     isSalaryPaid,
   } = useStaff();
   const { formatAmount } = useCurrency();
-  const filteredRoles = mode === 'restaurant' ? STAFF_ROLES.filter(r => ['cook', 'delivery'].includes(r.value)) : STAFF_ROLES.filter(r => ['helper', 'other'].includes(r.value));
   const filteredRoles = mode === 'restaurant' ? STAFF_ROLES.filter(r => ['cook', 'delivery'].includes(r.value)) : STAFF_ROLES.filter(r => ['helper', 'other'].includes(r.value));
   
   const [isAddOpen, setIsAddOpen] = useState(false);

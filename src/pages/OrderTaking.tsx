@@ -43,9 +43,14 @@ export default function OrderTaking() {
   });
 
   const { data: menuItems, isLoading: menuLoading } = useQuery({
-    queryKey: ["menu_items"],
+    queryKey: ["restaurant-menu-items", user?.id],
     queryFn: async () => {
-      const { data, error } = await supabase.from("menu_items").select("*").eq("is_available", true).order("category");
+      const { data, error } = await supabase
+        .from("menu_items")
+        .select("*")
+        .eq("owner_id", user?.id)
+        .eq("is_available", true)
+        .order("category");
       if (error) throw error;
       return data as MenuItem[];
     },

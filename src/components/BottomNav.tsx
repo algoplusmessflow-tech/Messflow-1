@@ -17,9 +17,9 @@ const getMainNavItems = (mode: string) => {
     case 'restaurant':
       return [
         { to: '/tables', icon: UtensilsCrossed, label: 'Tables' },
+        { to: '/restaurant-menu', icon: UtensilsCrossed, label: 'Menu' },
         { to: '/orders', icon: Receipt, label: 'POS' },
         { to: '/kitchen-prep', icon: ChefHat, label: 'KDS' },
-        { to: '/invoices', icon: FileText, label: 'Invoices' },
       ];
     case 'canteen':
       return [
