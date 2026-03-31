@@ -1,65 +1,108 @@
-import React from 'react';
-import { useAuth } from '@/lib/auth';
-import { useProfile } from '@/hooks/useProfile';
-import { useAppMode } from '@/contexts/ModeContext';
-import { cn } from '@/lib/utils';
-import { Store, UtensilsCrossed, Coffee } from 'lucide-react';
-import type { Database } from '@/integrations/supabase/types';
+// src/components/ModeSwitcher.tsx
+// MODE SWITCHER - Switch between Mess, Restaurant, Canteen modes
+// Shows locked modes with upgrade pricing buttons
 
-type AppMode = Database['public']['Enums']['business_type'];
+import React, { useState, useEffect } from "react";
+import { useAppMode } from "@/contexts/ModeContext";
+import {
+  Utensils,
+  UtensilsCrossed,
+  ShoppingCart,
+  Lock,
+  Zap,
+  ChevronDown,
+} from "lucide-react";
+import { Button } from "@/components/ui/button";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import { Badge } from "@/components/ui/badge";
 
-export function ModeSwitcher({ isMobile = false }: { isMobile?: boolean }) {
-  const { mode, isLoadingMode } = useAppMode();
-  const { user } = useAuth();
-  const { updateProfile } = useProfile();
+const MODES = {
+  mess: {
+    label: "Mess/Canteen",
+    icon: <Utensils size={18} />,
+    color: "bg-blue-600",
+  },
+  restaurant: {
+    label: "Restaurant",
+    icon: <UtensilsCrossed size={18} />,
+    color: "bg-orange-600",
+  },
+  canteen: {
+    label: "Canteen",
+    icon: <ShoppingCart size={18} />,
+    color: "bg-green-600",
+  },
+};
 
-  const handleModeChange = (newMode: AppMode) => {
-    if (newMode !== mode && newMode !== 'cloud_kitchen') {
-      updateProfile.mutate({ business_type: newMode });
-    }
+export const ModeSwitcher = () => {
+  const { mode, setMode, availableModes, lockedModes } = useAppMode();
+
+  const handleUpgrade = (lockedMode: string) => {
+    window.location.href = `/pricing?mode=${lockedMode}`;
   };
 
-  const modes: { id: AppMode; label: string; icon: any }[] = [
-    { id: 'mess', label: 'Mess', icon: Store },
-    { id: 'restaurant', label: 'Restaurant', icon: UtensilsCrossed },
-    { id: 'canteen', label: 'Canteen', icon: Coffee }
-  ];
-
-  if (isLoadingMode) return null;
-
   return (
-    <div className={cn(
-      "flex p-1 bg-muted/50 rounded-lg overflow-hidden border border-border/50",
-      isMobile ? "w-full" : "w-full"
-    )}>
-      {modes.map((m) => {
-        const isActive = mode === m.id;
-        const Icon = m.icon;
-        
-        return (
-          <button
-            key={m.id}
-            disabled={updateProfile.isPending}
-            onClick={() => handleModeChange(m.id)}
-            className={cn(
-              "flex-1 flex flex-col xl:flex-row items-center justify-center p-2 text-xs font-medium transition-all rounded-md gap-1.5",
-              isActive 
-                ? "bg-background text-foreground shadow-sm ring-1 ring-border" 
-                : "text-muted-foreground hover:text-foreground hover:bg-background/50",
-              updateProfile.isPending && "opacity-50 cursor-not-allowed"
-            )}
-            title={m.label}
+    <DropdownMenu>
+      <DropdownMenuTrigger asChild>
+        <Button variant="ghost" className="gap-2">
+          {MODES[mode as keyof typeof MODES].icon}
+          <span>{MODES[mode as keyof typeof MODES].label}</span>
+          <ChevronDown size={16} />
+        </Button>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="end" className="w-56">
+        {/* Available Modes */}
+        {availableModes.map((m) => (
+          <DropdownMenuItem
+            key={m}
+            onClick={() => setMode(m as any)}
+            className={mode === m ? "bg-blue-50 dark:bg-blue-900" : ""}
           >
-            <Icon className="h-4 w-4 shrink-0" />
-            <span className={cn(
-              "truncate",
-              isMobile ? "block" : "hidden xl:block"
-            )}>
-              {m.label}
-            </span>
-          </button>
-        );
-      })}
-    </div>
+            <div className="flex items-center gap-3 flex-1">
+              {MODES[m as keyof typeof MODES].icon}
+              <span>{MODES[m as keyof typeof MODES].label}</span>
+              {mode === m && <Badge className="ml-auto">Active</Badge>}
+            </div>
+          </DropdownMenuItem>
+        ))}
+
+        {/* Separator */}
+        {lockedModes.length > 0 && <DropdownMenuSeparator />}
+
+        {/* Locked Modes */}
+        {lockedModes.map((lockedMode) => (
+          <DropdownMenuItem
+            key={lockedMode}
+            disabled
+            className="opacity-50 cursor-not-allowed"
+          >
+            <div className="flex items-center gap-3 flex-1">
+              <Lock size={18} />
+              <span>{MODES[lockedMode as keyof typeof MODES].label}</span>
+              <Button
+                size="sm"
+                variant="outline"
+                className="ml-auto h-6 text-xs"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  handleUpgrade(lockedMode);
+                }}
+              >
+                <Zap size={12} className="mr-1" />
+                Unlock
+              </Button>
+            </div>
+          </DropdownMenuItem>
+        ))}
+      </DropdownMenuContent>
+    </DropdownMenu>
   );
-}
+};
+
+export default ModeSwitcher;

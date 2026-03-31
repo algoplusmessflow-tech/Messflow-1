@@ -1,0 +1,4 @@
+const SuperAdmin = lazy(() => import("./pages/SuperAdmin"));
+const SuperAdminSecurity = lazy(() => import("./pages/SuperAdminSecurity"));
+const SuperAdminModeActivation = lazy(() => import("./pages/SuperAdminModeActivation"));
+const PrivacyPolicy = lazy(() => import("./pages/PrivacyPolicy"));

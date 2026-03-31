@@ -86,8 +86,8 @@ export default function Login() {
       // Super admin - redirect to admin panel
       navigate('/super-admin');
     } else {
-      // Mess owner - redirect to dashboard
-      navigate('/dashboard');
+      // Regular user - redirect to mode selection
+      navigate('/mode-selection');
     }
   };
 

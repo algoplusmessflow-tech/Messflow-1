@@ -7,11 +7,20 @@ import { Label } from '@/components/ui/label';
 import { useProfile } from '@/hooks/useProfile';
 import { useSubscription } from '@/hooks/useSubscription';
 import { formatDate } from '@/lib/format';
-import { Check, Crown, Zap, Star, AlertTriangle, ExternalLink, Loader2, Gift } from 'lucide-react';
+import { Check, Crown, Zap, Star, AlertTriangle, ExternalLink, Loader2, Gift, UtensilsCrossed, ShoppingCart, Utensils } from 'lucide-react';
 import { PLANS } from '@/lib/plans';
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
+import { useSearchParams } from 'react-router-dom';
+
+const MODE_LABELS: Record<string, { label: string; icon: React.ReactNode }> = {
+  mess: { label: 'Mess/Canteen', icon: <Utensils size={20} /> },
+  restaurant: { label: 'Restaurant', icon: <UtensilsCrossed size={20} /> },
+  canteen: { label: 'Canteen', icon: <ShoppingCart size={20} /> },
+};
 
 export default function Pricing() {
+  const [searchParams] = useSearchParams();
+  const requestedMode = searchParams.get('mode');
   const { profile } = useProfile();
   const { subscriptionStatus, daysUntilExpiry, isExpired, isExpiringSoon, applyPromoCode } = useSubscription();
   const [promoCode, setPromoCode] = useState('');
@@ -38,6 +47,27 @@ export default function Pricing() {
   return (
     <AppLayout>
       <div className="space-y-6">
+        {/* Mode Upgrade Banner */}
+        {requestedMode && MODE_LABELS[requestedMode] && (
+          <Card className="border-amber-500/50 bg-gradient-to-r from-amber-50 to-orange-50 dark:from-amber-950/30 dark:to-orange-950/30">
+            <CardContent className="p-4">
+              <div className="flex items-center gap-4">
+                <div className="p-3 bg-amber-100 dark:bg-amber-900/50 rounded-full">
+                  {MODE_LABELS[requestedMode].icon}
+                </div>
+                <div className="flex-1">
+                  <h3 className="font-semibold text-amber-900 dark:text-amber-100">
+                    Unlock {MODE_LABELS[requestedMode].label} Mode
+                  </h3>
+                  <p className="text-sm text-amber-700/80 dark:text-amber-200/70">
+                    Upgrade your plan to access {MODE_LABELS[requestedMode].label} features and expand your business operations.
+                  </p>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+        )}
+
         <div className="text-center">
           <h1 className="text-3xl font-bold">Choose Your Plan</h1>
           <p className="text-muted-foreground mt-2">

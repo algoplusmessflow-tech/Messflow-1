@@ -1,4 +1,4 @@
-import { Home, Users, UtensilsCrossed, Receipt, Settings, MoreHorizontal, UserCog, LogOut, Package, CreditCard, FileBarChart, Truck, FileText, UserPlus, ChefHat, Gift, MapPin } from 'lucide-react';
+import { Home, Users, UtensilsCrossed, Receipt, Settings, MoreHorizontal, UserCog, LogOut, Package, CreditCard, FileBarChart, Truck, FileText, UserPlus, ChefHat, Gift, MapPin, ArrowLeftRight } from 'lucide-react';
 import { NavLink, useNavigate } from 'react-router-dom';
 import { cn } from '@/lib/utils';
 import { useAuth } from '@/lib/auth';
@@ -16,24 +16,24 @@ const getMainNavItems = (mode: string) => {
   switch (mode) {
     case 'restaurant':
       return [
-        { to: '/dashboard', icon: Home, label: 'Home' },
-        { to: '/tables', icon: UtensilsCrossed, label: 'Tables' }, // Mock route
-        { to: '/orders', icon: Receipt, label: 'Orders' }, // Mock route
-        { to: '/kitchen-prep', icon: ChefHat, label: 'Kitchen' },
+        { to: '/tables', icon: UtensilsCrossed, label: 'Tables' },
+        { to: '/orders', icon: Receipt, label: 'POS' },
+        { to: '/kitchen-prep', icon: ChefHat, label: 'KDS' },
+        { to: '/invoices', icon: FileText, label: 'Invoices' },
       ];
     case 'canteen':
       return [
         { to: '/dashboard', icon: Home, label: 'Home' },
         { to: '/members', icon: Users, label: 'Members' },
         { to: '/menu', icon: UtensilsCrossed, label: 'Menu' },
-        { to: '/tokens', icon: Receipt, label: 'Tokens' }, // Mock route
+        { to: '/tokens', icon: Receipt, label: 'Tokens' },
       ];
     case 'cloud_kitchen':
       return [
         { to: '/dashboard', icon: Home, label: 'Home' },
-        { to: '/orders', icon: Receipt, label: 'Orders' }, // Mock route
-        { to: '/kitchen-prep', icon: ChefHat, label: 'Kitchen' },
+        { to: '/orders', icon: Receipt, label: 'Orders' },
         { to: '/inventory', icon: Package, label: 'Inventory' },
+        { to: '/kitchen-prep', icon: ChefHat, label: 'Kitchen' },
       ];
     case 'mess':
     default:
@@ -41,7 +41,7 @@ const getMainNavItems = (mode: string) => {
         { to: '/dashboard', icon: Home, label: 'Home' },
         { to: '/members', icon: Users, label: 'Members' },
         { to: '/menu', icon: UtensilsCrossed, label: 'Menu' },
-        { to: '/expenses', icon: Receipt, label: 'Expenses' },
+        { to: '/delivery', icon: Truck, label: 'Delivery' },
       ];
   }
 };
@@ -60,35 +60,29 @@ const getMoreNavItems = (mode: string) => {
       return [
         { to: '/inventory', icon: Package, label: 'Inventory' },
         { to: '/staff', icon: UserCog, label: 'Staff' },
-        { to: '/invoices', icon: FileText, label: 'Invoices' },
         ...commonEnd,
       ];
     case 'canteen':
       return [
         { to: '/inventory', icon: Package, label: 'Inventory' },
         { to: '/staff', icon: UserCog, label: 'Staff' },
-        { to: '/kitchen-prep', icon: ChefHat, label: 'Kitchen Prep' },
-        { to: '/invoices', icon: FileText, label: 'Invoices' },
         ...commonEnd,
       ];
     case 'cloud_kitchen':
       return [
-        { to: '/delivery', icon: Truck, label: 'Delivery' },
+        { to: '/expenses', icon: Receipt, label: 'Expenses' },
         { to: '/zones', icon: MapPin, label: 'Zones' },
         { to: '/staff', icon: UserCog, label: 'Staff' },
-        { to: '/expenses', icon: Receipt, label: 'Expenses' },
         { to: '/invoices', icon: FileText, label: 'Invoices' },
         ...commonEnd,
       ];
     case 'mess':
     default:
       return [
-        { to: '/inventory', icon: Package, label: 'Inventory' },
-        { to: '/staff', icon: UserCog, label: 'Staff' },
-        { to: '/delivery', icon: Truck, label: 'Delivery' },
         { to: '/zones', icon: MapPin, label: 'Zones' },
-        { to: '/kitchen-prep', icon: ChefHat, label: 'Kitchen Prep' },
         { to: '/invoices', icon: FileText, label: 'Invoices' },
+        { to: '/expenses', icon: Receipt, label: 'Expenses' },
+        { to: '/staff', icon: UserCog, label: 'Staff' },
         ...commonEnd,
       ];
   }
@@ -115,27 +109,36 @@ export function BottomNav() {
             to={item.to}
             className={({ isActive }) =>
               cn(
-                'flex flex-col items-center justify-center flex-1 h-full transition-colors',
+                'flex flex-col items-center justify-center flex-1 h-full min-h-[44px] transition-colors',
                 isActive
                   ? 'text-primary'
-                  : 'text-muted-foreground hover:text-foreground'
+                  : 'text-foreground/70 hover:text-foreground'
               )
             }
           >
-            <item.icon className="h-5 w-5 mb-1" />
-            <span className="text-xs font-medium">{item.label}</span>
+            {({ isActive }) => (
+              <>
+                <item.icon className={cn("h-5 w-5 mb-1", isActive ? "text-primary" : "text-foreground")} />
+                <span className="text-xs font-medium">{item.label}</span>
+              </>
+            )}
           </NavLink>
         ))}
 
         {/* More Menu */}
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
-            <button className="flex flex-col items-center justify-center flex-1 h-full text-muted-foreground hover:text-foreground transition-colors">
-              <MoreHorizontal className="h-5 w-5 mb-1" />
+            <button className="flex flex-col items-center justify-center flex-1 h-full min-h-[44px] text-foreground/70 hover:text-foreground transition-colors">
+              <MoreHorizontal className="h-5 w-5 mb-1 text-foreground" />
               <span className="text-xs font-medium">More</span>
             </button>
           </DropdownMenuTrigger>
           <DropdownMenuContent align="end" className="w-48 mb-2">
+            <DropdownMenuItem onClick={() => navigate('/mode-selection')}>
+              <ArrowLeftRight className="h-4 w-4 mr-2" />
+              Switch Mode
+            </DropdownMenuItem>
+            <DropdownMenuSeparator />
             {moreNavItems.map((item) => (
               <DropdownMenuItem key={item.to} onClick={() => navigate(item.to)}>
                 <item.icon className="h-4 w-4 mr-2" />

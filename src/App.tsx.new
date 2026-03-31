@@ -1,0 +1,58 @@
+import { Toaster } from "@/components/ui/toaster";
+import { Toaster as Sonner } from "@/components/ui/sonner";
+import { TooltipProvider } from "@/components/ui/tooltip";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
+import { AuthProvider } from "@/lib/auth";
+import { ProtectedRoute } from "@/components/ProtectedRoute";
+import { SubscriptionGuard } from "@/components/SubscriptionGuard";
+import { SubscriptionBanner } from "@/components/SubscriptionBanner";
+import { BroadcastModal } from "@/components/BroadcastModal";
+import { LoadingSpinner } from "@/components/LoadingSpinner";
+import { ErrorBoundary } from "@/components/ErrorBoundary";
+import { ModeProvider, useAppMode } from "@/contexts/ModeContext";
+import { Suspense, lazy } from "react";
+
+// Lazy load pages
+const PublicHome = lazy(() => import("./pages/PublicHome"));
+const Login = lazy(() => import("./pages/Login"));
+const Signup = lazy(() => import("./pages/Signup"));
+const Dashboard = lazy(() => import("./pages/Dashboard"));
+const Members = lazy(() => import("./pages/Members"));
+const Menu = lazy(() => import("./pages/Menu"));
+const Inventory = lazy(() => import("./pages/Inventory"));
+const Expenses = lazy(() => import("./pages/Expenses"));
+const Reports = lazy(() => import("./pages/Reports"));
+const Pricing = lazy(() => import("./pages/Pricing"));
+const StaffPayroll = lazy(() => import("./pages/StaffPayroll"));
+const Settings = lazy(() => import("./pages/Settings"));
+const Renewal = lazy(() => import("./pages/Renewal"));
+const SuperAdmin = lazy(() => import("./pages/SuperAdmin"));
+const SuperAdminSecurity = lazy(() => import("./pages/SuperAdminSecurity"));
+const SuperAdminModeActivation = lazy(() => import("./pages/SuperAdminModeActivation"));
+const PrivacyPolicy = lazy(() => import("./pages/PrivacyPolicy"));
+const TermsOfService = lazy(() => import("./pages/TermsOfService"));
+const DeliveryManagement = lazy(() => import("./pages/DeliveryManagement"));
+const DeliveryZones = lazy(() => import("./pages/DeliveryZones"));
+const NotFound = lazy(() => import("./pages/NotFound"));
+const Sales = lazy(() => import("./pages/Sales"));
+const Tables = lazy(() => import("./pages/Tables"));
+const OrderTaking = lazy(() => import("./pages/OrderTaking"));
+const PrintKOT = lazy(() => import("./pages/PrintKOT"));
+const Orders = lazy(() => import("./pages/Orders"));
+const Tokens = lazy(() => import("./pages/Tokens"));
+const RestaurantSettings = lazy(() => import("./pages/RestaurantSettings"));
+
+// ADD NEW IMPORT AFTER THIS LINE:
+// const SuperAdminModeActivation = lazy(() => import("./pages/SuperAdminModeActivation"));
+
+// Regular imports for new pages (to avoid lazy loading issues)
+import Invoices from "./pages/Invoices";
+import DriverPortal from "./pages/DriverPortal";
+import CustomerPortal from "./pages/CustomerPortal";
+import SalesPortal from "./pages/SalesPortal";
+import SalesPersonLogin from "./pages/SalesPersonLogin";
+import KitchenPrep from "./pages/KitchenPrep";
+import KitchenPortal from "./pages/KitchenPortal";
+import GoogleCallback from "./pages/GoogleCallback";
+import Referrals from "./pages/Referrals";

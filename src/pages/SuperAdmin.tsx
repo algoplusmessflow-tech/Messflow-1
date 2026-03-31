@@ -29,6 +29,8 @@ import { useBroadcasts } from '@/hooks/useBroadcasts';
 import { formatDate } from '@/lib/format';
 import { Users, Megaphone, Gift, Loader2, Plus, Trash2, CheckCircle, XCircle, Link as LinkIcon, UserPlus, AlertTriangle, HardDrive, Shield, CreditCard, UserCheck, ShieldAlert, Download, Edit2, UsersRound, FileSpreadsheet, Search, BarChart3, Activity, Cloud, Database, Image as ImageIcon, Zap, MapPin, MessageCircle } from 'lucide-react';
 import { toast } from 'sonner';
+
+import { TenantManagementTab, TenantWithModes } from '@/components/TenantManagementTab';
 import * as XLSX from 'xlsx';
 
 const formatBytes = (bytes: number): string => {
@@ -64,6 +66,8 @@ export default function SuperAdmin() {
     currentSuperAdminProfile,
     updateGatewaySettings,
     updatePlatformApiConfig,
+    activateTenantMode,
+    deactivateTenantMode,
   } = useSuperAdmin();
 
   // Platform API config state
@@ -503,7 +507,7 @@ export default function SuperAdmin() {
               <h1 className="text-3xl font-bold bg-gradient-to-r from-foreground to-muted-foreground bg-clip-text text-transparent">
                 Tenant Management
               </h1>
-              <p className="text-muted-foreground mt-1">Manage subscriptions and view all registered mess owners</p>
+              <p className="text-muted-foreground mt-1">Manage subscriptions and view all registered business owners</p>
             </div>
             <Link to="/super-admin/security">
               <Button variant="outline" className="border-border hover:bg-accent/50 transition-all duration-300">
@@ -634,6 +638,17 @@ export default function SuperAdmin() {
                       >
                         +30 Days
                       </Button>
+                      {profile.subscription_status === 'active' && (
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={() => handleDeactivatePlan(profile.id)}
+                          disabled={updateSubscription.isPending}
+                          className="border-red-500/50 text-red-600 hover:bg-red-500 hover:text-white transition-colors"
+                        >
+                          Deactivate
+                        </Button>
+                      )}
                     </div>
                   </div>
                 ))}
@@ -873,239 +888,38 @@ export default function SuperAdmin() {
           </TabsContent>
 
           <TabsContent value="tenants" className="mt-4">
-            <Card className="backdrop-blur-xl border-border bg-card/80 hover:shadow-lg hover:shadow-glass transition-all duration-300">
-              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-4">
-                <CardTitle className="text-lg font-semibold">All Mess Owners</CardTitle>
-                <div className="relative w-64">
-                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-                  <Input
-                    placeholder="Search by name or email..."
-                    value={searchQuery}
-                    onChange={(e) => setSearchQuery(e.target.value)}
-                    className="pl-9 border-border focus:border-border focus:ring-border"
-                  />
-                </div>
-              </CardHeader>
-              <CardContent>
-                {profilesLoading ? (
-                  <div className="space-y-3">
-                    {[1, 2, 3].map((i) => <Skeleton key={i} className="h-12 w-full" />)}
-                  </div>
-                ) : tenantProfiles.length === 0 ? (
-                  <p className="text-center text-muted-foreground py-8">No registered tenants yet.</p>
-                ) : (
-                  <div className="overflow-x-auto">
-                    <Table>
-                      <TableHeader>
-                        <TableRow>
-                          <TableHead className="font-semibold text-muted-foreground">Mess Name</TableHead>
-                          <TableHead className="font-semibold text-muted-foreground">Owner Email</TableHead>
-                          <TableHead className="font-semibold text-muted-foreground">Plan</TableHead>
-                          <TableHead className="font-semibold text-muted-foreground">Members</TableHead>
-                          <TableHead className="font-semibold text-muted-foreground">Signup Date</TableHead>
-                          <TableHead className="font-semibold text-muted-foreground">Payment</TableHead>
-                          <TableHead className="font-semibold text-muted-foreground">Status</TableHead>
-                          <TableHead className="font-semibold text-muted-foreground">Expiry Date</TableHead>
-                          <TableHead className="font-semibold text-muted-foreground">Storage</TableHead>
-                          <TableHead className="text-right font-semibold text-muted-foreground">Actions</TableHead>
-                        </TableRow>
-                      </TableHeader>
-                      <TableBody>
-                        {tenantProfiles.map((profile) => (
-                          <TableRow key={profile.id} className="hover:bg-background/50 transition-colors">
-                            <TableCell className="font-medium text-foreground">
-                              <div className="flex items-center gap-2">
-                                {profile.business_name}
-                                <Dialog
-                                  open={editingBusinessName === profile.id}
-                                  onOpenChange={(open) => {
-                                    if (!open) setEditingBusinessName(null);
-                                    else {
-                                      setEditingBusinessName(profile.id);
-                                      setNewBusinessName(profile.business_name);
-                                    }
-                                  }}
-                                >
-                                  <DialogTrigger asChild>
-                                    <Button size="icon" variant="ghost" className="h-6 w-6 hover:bg-background/50">
-                                      <Edit2 className="h-3 w-3 text-muted-foreground" />
-                                    </Button>
-                                  </DialogTrigger>
-                                  <DialogContent>
-                                    <DialogHeader>
-                                      <DialogTitle>Edit Business Name</DialogTitle>
-                                      <DialogDescription>Update the business name for this tenant.</DialogDescription>
-                                    </DialogHeader>
-                                    <div className="space-y-4">
-                                      <Input
-                                        value={newBusinessName}
-                                        onChange={(e) => setNewBusinessName(e.target.value)}
-                                        placeholder="Business Name"
-                                        className="border-border focus:border-border focus:ring-border"
-                                      />
-                                      <Button
-                                        className="w-full bg-gradient-to-r from-primary to-primary/80 hover:from-primary/90 hover:to-primary/70 text-white font-semibold"
-                                        onClick={() => handleSaveBusinessName(profile.id)}
-                                        disabled={updateBusinessName.isPending}
-                                      >
-                                        {updateBusinessName.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-                                        Save
-                                      </Button>
-                                    </div>
-                                  </DialogContent>
-                                </Dialog>
-                              </div>
-                            </TableCell>
-                            <TableCell className="text-muted-foreground">{profile.owner_email}</TableCell>
-                            <TableCell>
-                              <Badge variant="outline" className="uppercase text-xs font-bold">
-                                {profile.plan_type || 'free'}
-                              </Badge>
-                            </TableCell>
-                            <TableCell>
-                              <Badge variant="secondary" className="font-mono bg-background/50 text-foreground border-border">
-                                {profile.member_count || 0}
-                              </Badge>
-                            </TableCell>
-                            <TableCell className="text-muted-foreground">{formatDate(new Date(profile.created_at))}</TableCell>
-                            <TableCell>
-                              <Button
-                                size="sm"
-                                variant={profile.is_paid ? 'default' : 'outline'}
-                                className={`${profile.is_paid ? 'bg-green-500 hover:bg-green-600 text-white' : 'border-border text-foreground hover:bg-background/50'} font-medium`}
-                                onClick={() => togglePaymentStatus.mutate({
-                                  profileId: profile.id,
-                                  isPaid: !profile.is_paid
-                                })}
-                                disabled={togglePaymentStatus.isPending}
-                              >
-                                <CreditCard className="h-4 w-4 mr-1" />
-                                {profile.is_paid ? 'Paid' : 'Unpaid'}
-                              </Button>
-                            </TableCell>
-                            <TableCell>
-                              <Badge
-                                variant={
-                                  profile.subscription_status === 'active' ? 'default' :
-                                    profile.subscription_status === 'trial' ? 'secondary' : 'destructive'
-                                }
-                                className={`${profile.subscription_status === 'active' ? 'bg-green-100 text-green-800 border-green-200' :
-                                  profile.subscription_status === 'trial' ? 'bg-blue-100 text-blue-800 border-blue-200' :
-                                    'bg-red-100 text-red-800 border-red-200'} font-medium`}
-                              >
-                                {profile.subscription_status}
-                              </Badge>
-                            </TableCell>
-                            <TableCell className="text-muted-foreground">
-                              {profile.subscription_expiry
-                                ? formatDate(new Date(profile.subscription_expiry))
-                                : '—'}
-                            </TableCell>
-                            <TableCell>
-                              <div className="text-xs text-muted-foreground">
-                                <span className={profile.storage_used > (profile.storage_limit * 0.9) ? 'text-destructive font-medium' : ''}>
-                                  {formatBytes(profile.storage_used || 0)}
-                                </span>
-                                <span className="text-muted-foreground/70"> / {formatBytes(profile.storage_limit || 104857600)}</span>
-                              </div>
-                            </TableCell>
-                            <TableCell className="text-right">
-                              <div className="flex items-center justify-end gap-2">
-                                <Button
-                                  size="sm"
-                                  variant="ghost"
-                                  onClick={() => handleEditSubscription(profile)}
-                                  title="Edit Subscription"
-                                  className="hover:bg-background/50"
-                                >
-                                  <Edit2 className="h-4 w-4 text-muted-foreground" />
-                                </Button>
-                                <Button
-                                  size="sm"
-                                  variant="outline"
-                                  onClick={() => handleActivatePlan(profile.id)}
-                                  disabled={updateSubscription.isPending}
-                                  className="border-green-500/50 text-green-600 hover:bg-green-500 hover:text-white font-medium transition-colors"
-                                >
-                                  <CheckCircle className="h-4 w-4 mr-1" />
-                                  Activate
-                                </Button>
-                                <Button
-                                  size="sm"
-                                  variant="outline"
-                                  onClick={() => handleDeactivatePlan(profile.id)}
-                                  disabled={updateSubscription.isPending}
-                                  className="border-destructive/50 text-destructive hover:bg-destructive hover:text-white font-medium transition-colors"
-                                >
-                                  <XCircle className="h-4 w-4 mr-1" />
-                                  Deactivate
-                                </Button>
-                                <Button
-                                  size="sm"
-                                  variant="ghost"
-                                  onClick={() => handleExportMembers(profile)}
-                                  disabled={exportingOwner === profile.id}
-                                  title="Export members as Excel"
-                                  className="hover:bg-background/50"
-                                >
-                                  {exportingOwner === profile.id ? (
-                                    <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
-                                  ) : (
-                                    <FileSpreadsheet className="h-4 w-4 text-muted-foreground" />
-                                  )}
-                                </Button>
-                              </div>
-                            </TableCell>
-                          </TableRow>
-                        ))}
-                      </TableBody>
-                    </Table>
-                  </div>
-                )}
-              </CardContent>
-            </Card>
-            <Dialog open={!!editingSubscription} onOpenChange={(open) => !open && setEditingSubscription(null)}>
-              <DialogContent>
-                <DialogHeader>
-                  <DialogTitle>Edit Subscription</DialogTitle>
-                  <DialogDescription>Update plan details for this tenant.</DialogDescription>
-                </DialogHeader>
-                <div className="space-y-4">
-                  <div className="space-y-2">
-                    <Label>Plan Type</Label>
-                    <select
-                      className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
-                      value={editSubForm.planType}
-                      onChange={(e) => setEditSubForm({ ...editSubForm, planType: e.target.value as any })}
-                    >
-                      <option value="free">Free</option>
-                      <option value="pro">Pro</option>
-                      <option value="enterprise">Enterprise</option>
-                    </select>
-                  </div>
-                  <div className="space-y-2">
-                    <Label>Status</Label>
-                    <select
-                      className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
-                      value={editSubForm.status}
-                      onChange={(e) => setEditSubForm({ ...editSubForm, status: e.target.value as any })}
-                    >
-                      <option value="active">Active</option>
-                      <option value="trial">Trial</option>
-                      <option value="expired">Expired</option>
-                    </select>
-                  </div>
-                  <Button
-                    className="w-full"
-                    onClick={handleSaveSubscription}
-                    disabled={updateSubscription.isPending}
-                  >
-                    {updateSubscription.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-                    Save Changes
-                  </Button>
-                </div>
-              </DialogContent>
-            </Dialog>
+            <TenantManagementTab
+              tenants={allProfiles.map(profile => ({
+                id: profile.id,
+                user_id: profile.user_id,
+                business_name: profile.business_name,
+                owner_email: profile.owner_email,
+                plan_type: (profile.plan_type || 'free') as 'free' | 'pro' | 'enterprise',
+                member_count: profile.member_count || 0,
+                payment_status: (profile.is_paid ? 'paid' : 'unpaid') as 'paid' | 'unpaid',
+                subscription_status: (profile.subscription_status || 'expired') as 'active' | 'trial' | 'expired',
+                subscription_expiry: profile.subscription_expiry,
+                storage_used: profile.storage_used || 0,
+                storage_limit: profile.storage_limit || 104857600,
+                created_at: profile.created_at,
+                active_modes: profile.active_modes || ['mess'],
+                max_allowed_modes: (profile as any).max_allowed_modes || 1,
+              })) as TenantWithModes[]}
+              isLoading={profilesLoading}
+              onActivate={handleActivatePlan}
+              onDeactivate={handleDeactivatePlan}
+              onToggleMode={async (tenantId, mode, isActive) => {
+                if (isActive) {
+                  await deactivateTenantMode.mutateAsync({ tenantId, mode });
+                } else {
+                  await activateTenantMode.mutateAsync({ tenantId, mode });
+                }
+              }}
+              onExportMembers={(tenant) => {
+                const profile = allProfiles.find(p => p.id === tenant.id);
+                if (profile) handleExportMembers(profile);
+              }}
+            />
           </TabsContent>
 
           <TabsContent value="promos" className="mt-4 space-y-4">
@@ -1372,7 +1186,7 @@ export default function SuperAdmin() {
                 <DialogContent>
                   <DialogHeader>
                     <DialogTitle>Send System Update</DialogTitle>
-                    <DialogDescription>Broadcast an announcement to all mess owners.</DialogDescription>
+                    <DialogDescription>Broadcast an announcement to all business owners.</DialogDescription>
                   </DialogHeader>
                   <form onSubmit={handleSendBroadcast} className="space-y-4">
                     <div className="space-y-2">
@@ -2030,7 +1844,6 @@ export default function SuperAdmin() {
               </CardContent>
             </Card>
           </TabsContent>
-
         </Tabs>
       </div>
 

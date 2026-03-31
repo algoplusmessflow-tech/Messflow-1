@@ -1,0 +1,9 @@
+            <TabsTrigger value="api-services">
+              <Zap className="h-4 w-4 mr-2" />
+              API & Services
+            </TabsTrigger>
+            <TabsTrigger value="mode-activation">
+              <Zap className="h-4 w-4 mr-2" />
+              Mode Activation
+            </TabsTrigger>
+          </TabsList>

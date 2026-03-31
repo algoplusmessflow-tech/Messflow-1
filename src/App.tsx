@@ -2,7 +2,7 @@ import { Toaster } from "@/components/ui/toaster";
 import { Toaster as Sonner } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { BrowserRouter, Routes, Route } from "react-router-dom";
+import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 import { AuthProvider } from "@/lib/auth";
 import { ProtectedRoute } from "@/components/ProtectedRoute";
 import { SubscriptionGuard } from "@/components/SubscriptionGuard";
@@ -10,7 +10,7 @@ import { SubscriptionBanner } from "@/components/SubscriptionBanner";
 import { BroadcastModal } from "@/components/BroadcastModal";
 import { LoadingSpinner } from "@/components/LoadingSpinner";
 import { ErrorBoundary } from "@/components/ErrorBoundary";
-import { ModeProvider } from "@/contexts/ModeContext";
+import { ModeProvider, useAppMode } from "@/contexts/ModeContext";
 import { Suspense, lazy } from "react";
 
 // Lazy load pages
@@ -18,6 +18,7 @@ const PublicHome = lazy(() => import("./pages/PublicHome"));
 const Login = lazy(() => import("./pages/Login"));
 const Signup = lazy(() => import("./pages/Signup"));
 const Dashboard = lazy(() => import("./pages/Dashboard"));
+const ModeSelection = lazy(() => import("./pages/ModeSelection"));
 const Members = lazy(() => import("./pages/Members"));
 const Menu = lazy(() => import("./pages/Menu"));
 const Inventory = lazy(() => import("./pages/Inventory"));
@@ -29,6 +30,7 @@ const Settings = lazy(() => import("./pages/Settings"));
 const Renewal = lazy(() => import("./pages/Renewal"));
 const SuperAdmin = lazy(() => import("./pages/SuperAdmin"));
 const SuperAdminSecurity = lazy(() => import("./pages/SuperAdminSecurity"));
+const SuperAdminModeActivation = lazy(() => import("./pages/SuperAdminModeActivation"));
 const PrivacyPolicy = lazy(() => import("./pages/PrivacyPolicy"));
 const TermsOfService = lazy(() => import("./pages/TermsOfService"));
 const DeliveryManagement = lazy(() => import("./pages/DeliveryManagement"));
@@ -40,6 +42,7 @@ const OrderTaking = lazy(() => import("./pages/OrderTaking"));
 const PrintKOT = lazy(() => import("./pages/PrintKOT"));
 const Orders = lazy(() => import("./pages/Orders"));
 const Tokens = lazy(() => import("./pages/Tokens"));
+const RestaurantSettings = lazy(() => import("./pages/RestaurantSettings"));
 
 // Regular imports for new pages (to avoid lazy loading issues)
 import Invoices from "./pages/Invoices";
@@ -51,8 +54,15 @@ import KitchenPrep from "./pages/KitchenPrep";
 import KitchenPortal from "./pages/KitchenPortal";
 import GoogleCallback from "./pages/GoogleCallback";
 import Referrals from "./pages/Referrals";
-
 const queryClient = new QueryClient();
+
+const RestaurantZoneGuard = ({ children }: { children: React.ReactNode }) => {
+  const { mode } = useAppMode();
+  if (mode === 'restaurant') {
+    return <Navigate to="/tables" replace />;
+  }
+  return <>{children}</>;
+};
 
 const App = () => (
   <ErrorBoundary>
@@ -83,7 +93,16 @@ const App = () => (
                   <SuperAdminSecurity />
                 </ProtectedRoute>
               } />
-              <Route
+              <Route path="/super-admin/mode-activation" element={
+                <ProtectedRoute requireSuperAdmin>
+                  <SuperAdminModeActivation />
+                </ProtectedRoute>
+              } />
+              <Route path="/mode-selection" element={
+                <ProtectedRoute>
+                  <ModeSelection />
+                </ProtectedRoute>
+              } />              <Route
                 path="/dashboard"
                 element={
                   <ProtectedRoute>
@@ -127,8 +146,7 @@ const App = () => (
                     </SubscriptionGuard>
                   </ProtectedRoute>
                 }
-              />
-              <Route
+              />              <Route
                 path="/staff"
                 element={
                   <ProtectedRoute>
@@ -162,17 +180,6 @@ const App = () => (
                 }
               />
               <Route
-                path="/pricing"
-                element={
-                  <ProtectedRoute>
-                    <SubscriptionGuard>
-                      <SubscriptionBanner />
-                      <Pricing />
-                    </SubscriptionGuard>
-                  </ProtectedRoute>
-                }
-              />
-              <Route
                 path="/settings"
                 element={
                   <ProtectedRoute>
@@ -184,50 +191,15 @@ const App = () => (
                 }
               />
               <Route
-                path="/delivery"
+                path="/pricing"
                 element={
                   <ProtectedRoute>
                     <SubscriptionGuard>
-                      <SubscriptionBanner />
-                      <DeliveryManagement />
+                      <Pricing />
                     </SubscriptionGuard>
                   </ProtectedRoute>
                 }
-              />
-              <Route
-                path="/invoices"
-                element={
-                  <ProtectedRoute>
-                    <SubscriptionGuard>
-                      <SubscriptionBanner />
-                      <Invoices />
-                    </SubscriptionGuard>
-                  </ProtectedRoute>
-                }
-              />
-              <Route
-                path="/sales"
-                element={
-                  <ProtectedRoute>
-                    <SubscriptionGuard>
-                      <SubscriptionBanner />
-                      <Sales />
-                    </SubscriptionGuard>
-                  </ProtectedRoute>
-                }
-              />
-              <Route
-                path="/tables"
-                element={
-                  <ProtectedRoute>
-                    <SubscriptionGuard>
-                      <SubscriptionBanner />
-                      <Tables />
-                    </SubscriptionGuard>
-                  </ProtectedRoute>
-                }
-              />
-              <Route
+              />              <Route
                 path="/kitchen-prep"
                 element={
                   <ProtectedRoute>
@@ -272,6 +244,17 @@ const App = () => (
                 }
               />
               {/* Restaurant order flow */}
+              <Route
+                path="/tables"
+                element={
+                  <ProtectedRoute>
+                    <SubscriptionGuard>
+                      <SubscriptionBanner />
+                      <Tables />
+                    </SubscriptionGuard>
+                  </ProtectedRoute>
+                }
+              />
               <Route path="/order/new" element={
                 <ProtectedRoute>
                   <SubscriptionGuard>
@@ -291,7 +274,31 @@ const App = () => (
                   <ProtectedRoute>
                     <SubscriptionGuard>
                       <SubscriptionBanner />
-                      <DeliveryZones />
+                      <RestaurantZoneGuard>
+                        <DeliveryZones />
+                      </RestaurantZoneGuard>
+                    </SubscriptionGuard>
+                  </ProtectedRoute>
+                }
+              />
+              <Route
+                path="/invoices"
+                element={
+                  <ProtectedRoute>
+                    <SubscriptionGuard>
+                      <SubscriptionBanner />
+                      <Invoices />
+                    </SubscriptionGuard>
+                  </ProtectedRoute>
+                }
+              />
+              <Route
+                path="/delivery"
+                element={
+                  <ProtectedRoute>
+                    <SubscriptionGuard>
+                      <SubscriptionBanner />
+                      <DeliveryManagement />
                     </SubscriptionGuard>
                   </ProtectedRoute>
                 }

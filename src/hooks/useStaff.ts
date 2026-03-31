@@ -1,8 +1,10 @@
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useAppMode } from '@/contexts/ModeContext';
+
+import { useAppMode } from '@/contexts/ModeContext';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/lib/auth';
 import { toast } from 'sonner';
-import { useEffect } from 'react';
+import { useAppMode } from '@/contexts/ModeContext';
 import { startOfMonth, endOfMonth, format } from 'date-fns';
 import type { StaffUpdate } from '@/integrations/supabase/types';
 
@@ -70,14 +72,16 @@ export function useStaff() {
   const queryClient = useQueryClient();
 
   // Fetch all staff
+  const { mode } = useAppMode();
   const { data: staff = [], isLoading } = useQuery({
     queryKey: ['staff', user?.id],
     queryFn: async () => {
       if (!user) return [];
       const { data, error } = await supabase
-        .from('staff')
+        .from('staff').eq('business_mode', mode)
         .select('*')
         .eq('owner_id', user.id)
+        .eq('business_mode', mode)
         .order('created_at', { ascending: false });
       
       if (error) throw error;
@@ -187,8 +191,8 @@ export function useStaff() {
       if (!user) throw new Error('Not authenticated');
       
       const { data, error } = await supabase
-        .from('staff')
-        .insert({ ...staffData, owner_id: user.id })
+        .from('staff').eq('business_mode', mode)
+        .insert({ ...staffData, owner_id: user.id, business_mode: mode })
         .select()
         .single();
 
@@ -208,7 +212,7 @@ export function useStaff() {
   const updateStaff = useMutation({
     mutationFn: async ({ id, ...updates }: Partial<Staff> & { id: string }) => {
       const { data, error } = await supabase
-        .from('staff')
+        .from('staff').eq('business_mode', mode)
         .update(updates)
         .eq('id', id)
         .select()
@@ -230,7 +234,7 @@ export function useStaff() {
   const deactivateStaff = useMutation({
     mutationFn: async (id: string) => {
       const { error } = await supabase
-        .from('staff')
+        .from('staff').eq('business_mode', mode)
         .update({ is_active: false } as StaffUpdate)
         .eq('id', id);
       if (error) throw error;
@@ -248,7 +252,7 @@ export function useStaff() {
   const reactivateStaff = useMutation({
     mutationFn: async (id: string) => {
       const { error } = await supabase
-        .from('staff')
+        .from('staff').eq('business_mode', mode)
         .update({ is_active: true } as StaffUpdate)
         .eq('id', id);
       if (error) throw error;
@@ -265,7 +269,7 @@ export function useStaff() {
   // Hard delete staff (for cleanup, rarely used)
   const deleteStaff = useMutation({
     mutationFn: async (id: string) => {
-      const { error } = await supabase.from('staff').delete().eq('id', id);
+      const { error } = await supabase.from('staff').eq('business_mode', mode).delete().eq('id', id);
       if (error) throw error;
     },
     onSuccess: () => {

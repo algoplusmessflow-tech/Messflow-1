@@ -63,7 +63,7 @@ export default function PublicHome() {
   const navigate = useNavigate();
 
   useEffect(() => {
-    if (user) navigate("/dashboard");
+    if (user) navigate("/mode-selection");
   }, [user, navigate]);
 
   return (

@@ -26,6 +26,17 @@ interface Profile {
   member_count?: number;
   is_platform_gateway_enabled?: boolean;
   platform_gateway_config?: any;
+  active_modes?: string[];
+}
+
+interface TenantModeAccess {
+  id: string;
+  tenant_id: string;
+  manager_id: string;
+  active_modes: string[];
+  max_allowed_modes: number;
+  created_at: string;
+  updated_at: string;
 }
 
 // ... (rest of the file until updateSubscription)
@@ -107,7 +118,7 @@ export function useSuperAdmin() {
 
 
 
-  // Fetch all profiles (owners) with member counts
+  // Fetch all profiles (owners) with member counts and mode access
   const { data: allProfiles = [], isLoading: profilesLoading } = useQuery({
     queryKey: ['all-profiles'],
     queryFn: async () => {
@@ -118,17 +129,23 @@ export function useSuperAdmin() {
 
       if (error) throw error;
 
-      // Get member counts for each profile
+      // Get member counts and mode access for each profile
       const profilesWithCounts = await Promise.all(
         (profiles as Profile[]).map(async (profile) => {
-          const { count } = await supabase
-            .from('members')
-            .select('*', { count: 'exact', head: true })
-            .eq('owner_id', profile.user_id);
+          const [memberCountResult, modeAccessResult] = await Promise.all([
+            supabase
+              .from('members')
+              .select('*', { count: 'exact', head: true })
+              .eq('owner_id', profile.user_id),
+            (supabase.rpc as any)('get_tenant_mode_access', { p_tenant_id: profile.user_id }).single()
+          ]);
 
+          const modeData = (modeAccessResult as any)?.data;
           return {
             ...profile,
-            member_count: count || 0,
+            member_count: memberCountResult.count || 0,
+            active_modes: modeData?.active_modes || ['mess'],
+            max_allowed_modes: modeData?.max_allowed_modes || 1,
           };
         })
       );
@@ -623,6 +640,42 @@ export function useSuperAdmin() {
     },
   });
 
+  // Activate tenant mode (Super Admin)
+  const activateTenantMode = useMutation({
+    mutationFn: async ({ tenantId, mode }: { tenantId: string; mode: string }) => {
+      const { error } = await (supabase.rpc as any)('activate_tenant_mode', {
+        p_tenant_id: tenantId,
+        p_mode: mode
+      });
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['all-profiles'] });
+      toast.success('Mode activated successfully!');
+    },
+    onError: (error) => {
+      toast.error('Failed to activate mode: ' + error.message);
+    },
+  });
+
+  // Deactivate tenant mode (Super Admin)
+  const deactivateTenantMode = useMutation({
+    mutationFn: async ({ tenantId, mode }: { tenantId: string; mode: string }) => {
+      const { error } = await (supabase.rpc as any)('deactivate_tenant_mode', {
+        p_tenant_id: tenantId,
+        p_mode: mode
+      });
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['all-profiles'] });
+      toast.success('Mode deactivated successfully!');
+    },
+    onError: (error) => {
+      toast.error('Failed to deactivate mode: ' + error.message);
+    },
+  });
+
   return {
     isSuperAdmin,
     allProfiles,
@@ -647,5 +700,7 @@ export function useSuperAdmin() {
     currentSuperAdminProfile,
     updateGatewaySettings,
     updatePlatformApiConfig,
+    activateTenantMode,
+    deactivateTenantMode,
   };
 }

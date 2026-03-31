@@ -63,7 +63,7 @@ export default function Signup() {
 
     setLoading(false);
     toast.success('Account created successfully!');
-    navigate('/dashboard');
+    navigate('/mode-selection');
   };
 
   const handleGoogleSignup = async () => {
@@ -77,8 +77,8 @@ export default function Signup() {
         },
         scopes: 'https://www.googleapis.com/auth/drive.file https://www.googleapis.com/auth/spreadsheets',
         redirectTo: import.meta.env.VITE_APP_URL
-          ? `${import.meta.env.VITE_APP_URL}/dashboard`
-          : `${window.location.origin}/dashboard`,
+          ? `${import.meta.env.VITE_APP_URL}/mode-selection`
+          : `${window.location.origin}/mode-selection`,
       },
     });
 

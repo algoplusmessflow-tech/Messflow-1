@@ -1,19 +1,35 @@
 import { ReactNode } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { BottomNav } from './BottomNav';
 import { DesktopSidebar } from './DesktopSidebar';
 import { ThemeToggle } from './ThemeToggle';
 import { Footer } from './Footer';
 import { NotificationCenter } from './NotificationCenter';
-import { ModeSwitcher } from './ModeSwitcher';
 import { useProfile } from '@/hooks/useProfile';
 import { LogoHorizontal } from '@/components/Logo';
+import { Button } from '@/components/ui/button';
+import { ArrowLeftRight } from 'lucide-react';
 
 interface AppLayoutProps {
   children: ReactNode;
+  hideNavigation?: boolean;
 }
 
-export function AppLayout({ children }: AppLayoutProps) {
+export function AppLayout({ children, hideNavigation = false }: AppLayoutProps) {
+  const navigate = useNavigate();
   const { profile } = useProfile();
+
+  if (hideNavigation) {
+    return (
+      <div className="min-h-[100dvh] bg-background flex flex-col">
+        <main className="flex-1 flex flex-col overflow-x-hidden min-w-0">
+          <div className="w-full max-w-4xl mx-auto px-4 py-6 flex-1 min-w-0">
+            {children}
+          </div>
+        </main>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-[100dvh] bg-background flex flex-col">
@@ -39,7 +55,15 @@ export function AppLayout({ children }: AppLayoutProps) {
               </div>
             </div>
             <div className="px-4 pb-3">
-              <ModeSwitcher isMobile={true} />
+              <Button
+                variant="outline"
+                size="sm"
+                className="w-full justify-start gap-2"
+                onClick={() => navigate('/mode-selection')}
+              >
+                <ArrowLeftRight size={16} />
+                <span>Switch Mode</span>
+              </Button>
             </div>
           </div>
           <div className="w-full max-w-4xl mx-auto px-4 py-6 flex-1 min-w-0">

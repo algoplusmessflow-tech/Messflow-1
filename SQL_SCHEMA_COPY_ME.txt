@@ -1,0 +1,94 @@
+=====================================================
+RESTAURANT TABLE LOCKING - SQL SCHEMA FOR SUPABASE
+=====================================================
+
+Copy everything between the lines below and paste it into Supabase SQL Editor.
+
+=========================== START =================================
+
+-- Enable extensions
+CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
+CREATE EXTENSION IF NOT EXISTS pg_cron;
+
+-- Create schema
+CREATE SCHEMA IF NOT EXISTS restaurants;
+
+-- Create table_locks table
+CREATE TABLE IF NOT EXISTS restaurants.table_locks (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  table_id UUID NOT NULL,
+  venue_id UUID NOT NULL,
+  locked_by UUID NOT NULL,
+  locked_at TIMESTAMP NOT NULL DEFAULT NOW(),
+  expires_at TIMESTAMP NOT NULL DEFAULT NOW() + INTERVAL '30 seconds',
+  created_at TIMESTAMP DEFAULT NOW(),
+  CONSTRAINT one_lock_per_table UNIQUE(table_id, venue_id),
+  CONSTRAINT check_expiry CHECK (expires_at > locked_at)
+);
+
+-- Create indexes
+CREATE INDEX IF NOT EXISTS idx_locks_active ON restaurants.table_locks(table_id) WHERE expires_at > NOW();
+CREATE INDEX IF NOT EXISTS idx_locks_venue ON restaurants.table_locks(venue_id);
+CREATE INDEX IF NOT EXISTS idx_locks_expires ON restaurants.table_locks(expires_at);
+CREATE INDEX IF NOT EXISTS idx_locks_table ON restaurants.table_locks(table_id);
+
+-- Enable RLS
+ALTER TABLE restaurants.table_locks ENABLE ROW LEVEL SECURITY;
+
+-- RLS Policies
+CREATE POLICY "Users see locks for their venues only"
+  ON restaurants.table_locks FOR SELECT
+  USING (
+    venue_id IN (
+      SELECT DISTINCT venue_id FROM restaurants.venue_staff 
+      WHERE user_id = auth.uid()
+    )
+    OR venue_id IN (
+      SELECT id FROM restaurants.venues 
+      WHERE manager_id = auth.uid()
+    )
+  );
+
+CREATE POLICY "Users can delete only their own locks"
+  ON restaurants.table_locks FOR DELETE
+  USING (locked_by = auth.uid());
+
+CREATE POLICY "Authenticated users can create locks"
+  ON restaurants.table_locks FOR INSERT
+  WITH CHECK (
+    auth.uid() = locked_by AND
+    venue_id IN (
+      SELECT DISTINCT venue_id FROM restaurants.venue_staff 
+      WHERE user_id = auth.uid()
+    )
+  );
+
+-- Cleanup function
+CREATE OR REPLACE FUNCTION restaurants.cleanup_expired_locks()
+RETURNS TABLE(deleted_count BIGINT) AS $$
+BEGIN
+  DELETE FROM restaurants.table_locks 
+  WHERE expires_at < NOW();
+  
+  GET DIAGNOSTICS deleted_count = ROW_COUNT;
+  RETURN QUERY SELECT deleted_count;
+END;
+$$ LANGUAGE plpgsql;
+
+-- Permissions
+GRANT SELECT ON restaurants.table_locks TO authenticated;
+GRANT INSERT ON restaurants.table_locks TO authenticated;
+GRANT DELETE ON restaurants.table_locks TO authenticated;
+GRANT EXECUTE ON FUNCTION restaurants.cleanup_expired_locks() TO authenticated;
+
+============================ END ===================================
+
+DONE! All 4 files have been created in your MessFlow project:
+
+✅ src/services/tableLockService.ts       (6.5 KB)
+✅ src/hooks/useTableLocks.ts             (2.9 KB)
+✅ src/components/restaurant/TableCard.tsx    (5.5 KB)
+✅ src/components/restaurant/LockCountdown.tsx (2.7 KB)
+✅ src/components/restaurant/ReservationForm.tsx (8.2 KB)
+
+NEXT STEP: Copy the SQL schema above into Supabase SQL Editor and run it!

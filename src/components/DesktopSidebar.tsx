@@ -1,4 +1,4 @@
-import { Home, Users, UtensilsCrossed, Package, LogOut, Receipt, UserCog, Settings, CreditCard, FileBarChart, Truck, FileText, UserPlus, ChefHat, Gift, MapPin } from 'lucide-react';
+import { Home, Users, UtensilsCrossed, Package, LogOut, Receipt, UserCog, Settings, CreditCard, FileBarChart, Truck, FileText, UserPlus, ChefHat, Gift, MapPin, ArrowLeftRight } from 'lucide-react';
 import { NavLink, useNavigate } from 'react-router-dom';
 import { cn } from '@/lib/utils';
 import { useAuth } from '@/lib/auth';
@@ -7,72 +7,63 @@ import { useProfile } from '@/hooks/useProfile';
 import { ThemeToggle } from '@/components/ThemeToggle';
 import { Logo } from '@/components/Logo';
 import { NotificationCenter } from '@/components/NotificationCenter';
-import { ModeSwitcher } from '@/components/ModeSwitcher';
 
 import { useAppMode } from '@/contexts/ModeContext';
 
-const getNavItems = (mode: string) => {
-  const commonEnd = [
-    { to: '/reports', icon: FileBarChart, label: 'Reports' },
-    { to: '/sales', icon: UserPlus, label: 'Sales Team' },
-    { to: '/referrals', icon: Gift, label: 'Referrals' },
-    { to: '/pricing', icon: CreditCard, label: 'Pricing' },
-    { to: '/settings', icon: Settings, label: 'Settings' },
-  ];
+const commonEnd = [
+  { to: '/reports', icon: FileBarChart, label: 'Reports' },
+  { to: '/sales', icon: UserPlus, label: 'Sales Team' },
+  { to: '/referrals', icon: Gift, label: 'Referrals' },
+  { to: '/pricing', icon: CreditCard, label: 'Pricing' },
+  { to: '/settings', icon: Settings, label: 'Settings' },
+];
 
-  switch (mode) {
-    case 'restaurant':
-      return [
-        { to: '/dashboard', icon: Home, label: 'Dashboard' },
-        { to: '/tables', icon: UtensilsCrossed, label: 'Tables' },
-        { to: '/orders', icon: Receipt, label: 'Orders' },
-        { to: '/inventory', icon: Package, label: 'Inventory' },
-        { to: '/kitchen-prep', icon: ChefHat, label: 'Kitchen Prep' },
-        { to: '/staff', icon: UserCog, label: 'Staff & Payroll' },
-        { to: '/invoices', icon: FileText, label: 'Invoices' },
-        ...commonEnd,
-      ];
-    case 'canteen':
-      return [
-        { to: '/dashboard', icon: Home, label: 'Dashboard' },
-        { to: '/members', icon: Users, label: 'Members' },
-        { to: '/menu', icon: UtensilsCrossed, label: 'Menu' },
-        { to: '/tokens', icon: Receipt, label: 'Tokens' },
-        { to: '/inventory', icon: Package, label: 'Inventory' },
-        { to: '/kitchen-prep', icon: ChefHat, label: 'Kitchen Prep' },
-        { to: '/staff', icon: UserCog, label: 'Staff & Payroll' },
-        { to: '/invoices', icon: FileText, label: 'Invoices' },
-        ...commonEnd,
-      ];
-    case 'cloud_kitchen':
-      return [
-        { to: '/dashboard', icon: Home, label: 'Dashboard' },
-        { to: '/orders', icon: Receipt, label: 'Orders' },
-        { to: '/inventory', icon: Package, label: 'Inventory' },
-        { to: '/kitchen-prep', icon: ChefHat, label: 'Kitchen Prep' },
-        { to: '/expenses', icon: Receipt, label: 'Expenses' },
-        { to: '/delivery', icon: Truck, label: 'Delivery' },
-        { to: '/zones', icon: MapPin, label: 'Zones' },
-        { to: '/staff', icon: UserCog, label: 'Staff & Payroll' },
-        { to: '/invoices', icon: FileText, label: 'Invoices' },
-        ...commonEnd,
-      ];
-    case 'mess':
-    default:
-      return [
-        { to: '/dashboard', icon: Home, label: 'Dashboard' },
-        { to: '/members', icon: Users, label: 'Members' },
-        { to: '/staff', icon: UserCog, label: 'Staff & Payroll' },
-        { to: '/menu', icon: UtensilsCrossed, label: 'Menu' },
-        { to: '/inventory', icon: Package, label: 'Inventory' },
-        { to: '/expenses', icon: Receipt, label: 'Expenses' },
-        { to: '/delivery', icon: Truck, label: 'Delivery' },
-        { to: '/zones', icon: MapPin, label: 'Zones' },
-        { to: '/kitchen-prep', icon: ChefHat, label: 'Kitchen Prep' },
-        { to: '/invoices', icon: FileText, label: 'Invoices' },
-        ...commonEnd,
-      ];
-  }
+const navigationMap: Record<string, any[]> = {
+  restaurant: [
+    { to: '/tables', icon: UtensilsCrossed, label: 'Tables' },
+    { to: '/orders', icon: Receipt, label: 'Orders (POS)' },
+    { to: '/kitchen-prep', icon: ChefHat, label: 'Kitchen (KDS)' },
+    { to: '/invoices', icon: FileText, label: 'Invoices' },
+    { to: '/inventory', icon: Package, label: 'Inventory' },
+    { to: '/staff', icon: UserCog, label: 'Staff' },
+    ...commonEnd,
+  ],
+  mess: [
+    { to: '/dashboard', icon: Home, label: 'Home' },
+    { to: '/members', icon: Users, label: 'Members' },
+    { to: '/menu', icon: UtensilsCrossed, label: 'Menu' },
+    { to: '/delivery', icon: Truck, label: 'Delivery' },
+    { to: '/zones', icon: MapPin, label: 'Zones' },
+    { to: '/invoices', icon: FileText, label: 'Invoices' },
+    { to: '/expenses', icon: Receipt, label: 'Expenses' },
+    { to: '/staff', icon: UserCog, label: 'Staff' },
+    ...commonEnd,
+  ],
+  canteen: [
+    { to: '/dashboard', icon: Home, label: 'Home' },
+    { to: '/members', icon: Users, label: 'Members' },
+    { to: '/menu', icon: UtensilsCrossed, label: 'Menu' },
+    { to: '/tokens', icon: Receipt, label: 'Tokens' },
+    { to: '/inventory', icon: Package, label: 'Inventory' },
+    { to: '/staff', icon: UserCog, label: 'Staff' },
+    ...commonEnd,
+  ],
+  cloud_kitchen: [
+    { to: '/dashboard', icon: Home, label: 'Home' },
+    { to: '/orders', icon: Receipt, label: 'Orders' },
+    { to: '/inventory', icon: Package, label: 'Inventory' },
+    { to: '/kitchen-prep', icon: ChefHat, label: 'Kitchen Prep' },
+    { to: '/expenses', icon: Receipt, label: 'Expenses' },
+    { to: '/delivery', icon: Truck, label: 'Delivery' },
+    { to: '/zones', icon: MapPin, label: 'Zones' },
+    { to: '/staff', icon: UserCog, label: 'Staff' },
+    { to: '/invoices', icon: FileText, label: 'Invoices' },
+    ...commonEnd,
+  ]
+};
+
+const getNavItems = (mode: string) => {
+  return navigationMap[mode] || navigationMap.mess;
 };
 
 export function DesktopSidebar() {
@@ -105,7 +96,14 @@ export function DesktopSidebar() {
         </div>
 
         <div className="px-3 mb-4">
-          <ModeSwitcher />
+          <Button
+            variant="outline"
+            className="w-full justify-start gap-2"
+            onClick={() => navigate('/mode-selection')}
+          >
+            <ArrowLeftRight size={18} />
+            <span>Switch Mode</span>
+          </Button>
         </div>
 
         <nav className="flex-1 px-2 space-y-1 overflow-y-auto">
@@ -115,26 +113,30 @@ export function DesktopSidebar() {
               to={item.to}
               className={({ isActive }) =>
                 cn(
-                  'flex items-center gap-3 px-3 py-2.5 text-sm font-medium transition-colors',
+                  'flex items-center gap-3 px-3 py-3 min-h-[44px] text-sm font-medium transition-colors rounded-md',
                   isActive
-                    ? 'bg-primary text-primary-foreground'
-                    : 'text-muted-foreground hover:bg-accent hover:text-accent-foreground'
+                    ? 'bg-primary text-primary-foreground shadow-sm'
+                    : 'text-foreground/80 hover:bg-accent hover:text-foreground'
                 )
               }
             >
-              <item.icon className="h-5 w-5" />
-              {item.label}
+              {({ isActive }) => (
+                <>
+                  <item.icon className={cn("h-5 w-5", isActive ? "text-primary-foreground" : "text-foreground")} />
+                  {item.label}
+                </>
+              )}
             </NavLink>
           ))}
         </nav>
 
-        <div className="px-2 mt-auto">
+        <div className="px-2 mt-auto pb-2">
           <Button
             variant="ghost"
-            className="w-full justify-start gap-3 text-muted-foreground hover:text-foreground"
+            className="w-full justify-start gap-3 min-h-[44px] text-foreground/80 hover:text-foreground hover:bg-accent rounded-md"
             onClick={handleSignOut}
           >
-            <LogOut className="h-5 w-5" />
+            <LogOut className="h-5 w-5 text-foreground" />
             Sign Out
           </Button>
         </div>

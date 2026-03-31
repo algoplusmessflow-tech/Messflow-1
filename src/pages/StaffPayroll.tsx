@@ -43,6 +43,8 @@ export default function StaffPayroll() {
     isSalaryPaid,
   } = useStaff();
   const { formatAmount } = useCurrency();
+  const filteredRoles = mode === 'restaurant' ? STAFF_ROLES.filter(r => ['cook', 'delivery'].includes(r.value)) : STAFF_ROLES.filter(r => ['helper', 'other'].includes(r.value));
+  const filteredRoles = mode === 'restaurant' ? STAFF_ROLES.filter(r => ['cook', 'delivery'].includes(r.value)) : STAFF_ROLES.filter(r => ['helper', 'other'].includes(r.value));
   
   const [isAddOpen, setIsAddOpen] = useState(false);
   const [isAdvanceOpen, setIsAdvanceOpen] = useState(false);
@@ -186,6 +188,7 @@ export default function StaffPayroll() {
     <AppLayout>
       <div className="space-y-6">
         <div className="flex items-center justify-between">
+          <Badge className="mr-2">{mode === 'restaurant' ? 'Viewing Restaurant Staff' : 'Viewing Mess Staff'}</Badge>
           <div>
             <h1 className="text-2xl font-bold">Staff & Payroll</h1>
             <p className="text-muted-foreground">{staff.length} staff members</p>
@@ -233,7 +236,7 @@ export default function StaffPayroll() {
                       <SelectValue />
                     </SelectTrigger>
                     <SelectContent>
-                      {STAFF_ROLES.map((role) => (
+                      {filteredRoles.map((role) => (
                         <SelectItem key={role.value} value={role.value}>
                           {role.label}
                         </SelectItem>
